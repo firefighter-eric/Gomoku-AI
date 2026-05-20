@@ -45,7 +45,7 @@ class AlphaBetaAI:
     def __init__(
         self,
         stone: int,
-        depth: int = 3,
+        depth: int = 4,
         candidate_radius: int = 2,
         candidate_limit: int = 18,
         seed: int = 20260521,

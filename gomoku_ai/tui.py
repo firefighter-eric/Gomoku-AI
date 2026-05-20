@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import curses
-import time
 from dataclasses import dataclass
 
-from gomoku_ai.ai import AlphaBetaAI
-from gomoku_ai.cli import GameResult
-from gomoku_ai.core import BLACK, DRAW, EMPTY, WHITE, Board, InvalidMoveError, STONE_LABELS, STONE_NAMES, opponent
+from gomoku_ai.core import BLACK, EMPTY, STONE_LABELS, STONE_NAMES, opponent
+from gomoku_ai.game import GameResult, GameSession, GameSettings, column_label, format_move, result_message
 
 
 @dataclass(frozen=True)
@@ -109,16 +107,21 @@ class _TuiGame:
         self.depth = depth
         self.black_depth = black_depth
         self.white_depth = white_depth
-        self.board = Board(size=size)
         self.human_stone = human_stone
-        self.current = BLACK
         self.cursor = (size // 2, size // 2)
         self.geometry = BoardGeometry()
         self.delay = delay
         self.max_moves = max_moves
         self.message = "Arrows move, Space/Enter places, mouse click places, q quits."
-        self.started = time.perf_counter()
-        self.players = self._create_players()
+        self.session = GameSession(self._settings())
+
+    @property
+    def board(self):
+        return self.session.board
+
+    @property
+    def current(self) -> int:
+        return self.session.current
 
     def play(self) -> GameResult:
         curses.curs_set(0)
@@ -167,34 +170,34 @@ class _TuiGame:
         return self._finish(None)
 
     def _reset_for_new_game(self) -> None:
-        self.board = Board(size=self.size)
-        self.current = BLACK
+        self.session.restart(self._settings())
         self.cursor = (self.size // 2, self.size // 2)
-        self.started = time.perf_counter()
         self.message = "Arrows move, Space/Enter places, mouse click places, q quits."
-        self.players = self._create_players()
 
-    def _create_players(self) -> dict[int, AlphaBetaAI]:
-        if self.mode == "ai-ai":
-            return {
-                BLACK: AlphaBetaAI(BLACK, depth=self.black_depth),
-                WHITE: AlphaBetaAI(WHITE, depth=self.white_depth),
-            }
-        return {
-            BLACK: AlphaBetaAI(BLACK, depth=self.depth),
-            WHITE: AlphaBetaAI(WHITE, depth=self.depth),
-        }
+    def _settings(self) -> GameSettings:
+        return GameSettings(
+            mode=self.mode,
+            size=self.size,
+            human_stone=self.human_stone,
+            depth=self.depth,
+            black_depth=self.black_depth,
+            white_depth=self.white_depth,
+            max_moves=self.max_moves,
+        )
 
     def _is_ai_turn(self) -> bool:
-        return self.mode == "ai-ai" or self.current != self.human_stone
+        return self.session.is_ai_turn()
 
     def _play_ai_turn(self) -> GameResult | None:
         self.message = f"AI ({STONE_NAMES[self.current]}) thinking..."
         self._draw()
-        row, col = self.players[self.current].choose_move(self.board)
-        result = self._place_current(row, col)
-        if result is not None:
-            return result
+        outcome = self.session.play_ai_move()
+        if outcome.move is not None:
+            self.cursor = outcome.move
+        self.message = outcome.message
+        if outcome.result is not None:
+            self.message = result_message(outcome.result)
+            return outcome.result
         if self.delay > 0:
             self._draw()
             self.stdscr.timeout(int(self.delay * 1000))
@@ -211,33 +214,20 @@ class _TuiGame:
         return None
 
     def _place_current(self, row: int, col: int) -> GameResult | None:
-        try:
-            self.board.play(row, col, self.current)
-        except InvalidMoveError as exc:
-            self.message = f"Invalid move: {exc}"
-            return None
-
-        self.cursor = (row, col)
-        self.message = f"{STONE_NAMES[self.current].capitalize()} played {_format_move(row, col)}."
-        result = self.board.winner_from(row, col)
-        if result is not None:
-            return self._finish(result)
-
-        self.current = opponent(self.current)
+        outcome = self.session.play_human_move(row, col)
+        if outcome.move is not None:
+            self.cursor = outcome.move
+        self.message = outcome.message
+        if outcome.result is not None:
+            self.message = result_message(outcome.result)
+            return outcome.result
         return None
 
     def _finish(self, winner: int | None, *, resigned: bool = False) -> GameResult:
-        elapsed = time.perf_counter() - self.started
-        if resigned:
-            self.message = f"Resigned. {STONE_NAMES[winner].capitalize()} wins."
-        elif winner == DRAW:
-            self.message = f"Draw after {self.board.move_count} moves."
-        elif winner in (BLACK, WHITE):
-            self.message = f"{STONE_NAMES[winner].capitalize()} wins after {self.board.move_count} moves."
-        else:
-            self.message = f"Stopped after {self.board.move_count} moves."
-
-        return GameResult(winner=winner, moves=self.board.move_count, elapsed=elapsed, resigned=resigned)
+        outcome = self.session.finish(winner, resigned=resigned)
+        assert outcome.result is not None
+        self.message = result_message(outcome.result)
+        return outcome.result
 
     def _settlement_menu(self, result: GameResult) -> bool:
         try:
@@ -383,17 +373,11 @@ class _TuiGame:
 
 
 def _format_move(row: int, col: int) -> str:
-    return f"{_column_label(col)}{row + 1}"
+    return format_move(row, col)
 
 
 def _column_label(index: int) -> str:
-    value = index
-    label = ""
-    while True:
-        label = chr(ord("A") + value % 26) + label
-        value = value // 26 - 1
-        if value < 0:
-            return label
+    return column_label(index)
 
 
 def _clamp_depth(depth: int) -> int:

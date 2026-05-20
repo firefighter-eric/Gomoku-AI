@@ -1,8 +1,8 @@
 # Gomoku-AI
 
-`Gomoku-AI` 是一个使用 Python 3.12 和 uv 构建的五子棋项目，支持人机对战、AI 对 AI 自动对战，以及一个可用方向键和鼠标操作的终端 TUI。
+`Gomoku-AI` 是一个使用 Python 3.12 和 uv 构建的五子棋项目，支持人机对战、AI 对 AI 自动对战、可用方向键和鼠标操作的终端 TUI，以及 Pygame 图形界面。
 
-项目参考 [firefighter-eric/TicTacToe-AI](https://github.com/firefighter-eric/TicTacToe-AI) 的算法思路：棋盘状态、胜负检测、启发式评分、Zobrist 缓存、邻域候选点生成、alpha-beta 搜索。当前实现没有照搬参考项目源码，而是拆成更清晰的核心逻辑、AI 和界面层，方便后续继续接图形界面。
+项目参考 [firefighter-eric/TicTacToe-AI](https://github.com/firefighter-eric/TicTacToe-AI) 的算法思路：棋盘状态、胜负检测、启发式评分、Zobrist 缓存、邻域候选点生成、alpha-beta 搜索。当前实现没有照搬参考项目源码，而是拆成更清晰的核心逻辑、AI、共享对局会话和界面层，方便后续继续扩展。
 
 ## 功能
 
@@ -11,13 +11,16 @@
 - 支持两个 AI 自动对战。
 - 支持普通命令行坐标输入。
 - 支持 TUI 模式：方向键选格、回车/空格落子、终端支持时可鼠标点击落子。
+- 支持 Pygame GUI 模式：鼠标点击棋盘落子，右侧面板显示状态、难度、黑白和结算操作。
 - 对局结束后在 TUI 结算界面中可以调整难度、切换黑白、重新开始或退出。
+- 对局结束后在 GUI 结算界面中可以调整难度、切换黑白、重新开始或退出。
 - AI 使用启发式评分、候选点裁剪、Zobrist 缓存和 alpha-beta 搜索。
 
 ## 环境
 
 - Python `>=3.12`
 - uv
+- Pygame，由项目依赖自动安装。
 
 本项目已经配置 `pyproject.toml`，常用命令都可以通过 `uv run ...` 执行。
 
@@ -88,6 +91,31 @@ TUI 结算界面中的操作：
 - `Restart`：按当前结算界面中的设置重新开始。
 - `Exit` 或 `q`：退出。
 
+## GUI 模式
+
+启动 GUI 人机对战：
+
+```bash
+uv run gomoku --mode human-ai --human black --depth 3 --ui gui
+```
+
+也可以写成：
+
+```bash
+uv run gomoku --mode human-ai --human black --depth 3 --gui
+```
+
+GUI 对局中的操作：
+
+- 鼠标点击棋盘交叉点：落子。
+- `Esc` 或 `q`：退出窗口。
+- `Resign`：人机模式下认输。
+- `Stop`：AI 对 AI 模式下停止当前对局。
+- `Restart`：按当前设置重新开始。
+- `Exit`：退出窗口。
+
+GUI 结算界面会停留在最后局面。此时可以调整人机难度、切换黑白，或调整 AI 对 AI 的黑白双方搜索深度，然后点击 `Restart` 开始新对局。
+
 ## AI 对 AI
 
 启动两个 AI 自动对战：
@@ -100,6 +128,12 @@ TUI 模式下观看 AI 对 AI：
 
 ```bash
 uv run gomoku --mode ai-ai --black-depth 3 --white-depth 2 --delay 0.2 --tui
+```
+
+GUI 模式下观看 AI 对 AI：
+
+```bash
+uv run gomoku --mode ai-ai --black-depth 3 --white-depth 2 --delay 0.2 --ui gui
 ```
 
 参数说明：
@@ -128,6 +162,7 @@ uv run gomoku --help
 - `--mode ai-ai`：AI 对 AI。
 - `--ui plain`：普通文本界面，默认值。
 - `--ui tui` 或 `--tui`：方向键/鼠标 TUI。
+- `--ui gui` 或 `--gui`：Pygame 图形界面。
 - `--human black`：人类执黑。
 - `--human white`：人类执白。
 - `--depth 3`：人机对战中的 AI 难度。
@@ -156,21 +191,25 @@ uv run gomoku --help
 gomoku_ai/
   core.py   # 棋盘、规则、落子、胜负检测、坐标解析和文本渲染
   ai.py     # 启发式评分、候选点生成、Zobrist 缓存、alpha-beta 搜索
-  cli.py    # 普通命令行入口、人机对战和 AI 对 AI 对局循环
+  game.py   # CLI、TUI、GUI 共用的对局会话、设置、回合结果和结算结果
+  cli.py    # 普通命令行入口和文本输入输出
   tui.py    # 方向键/鼠标终端界面和结算菜单
+  gui.py    # Pygame 图形界面、棋盘绘制、鼠标点击和 GUI 结算操作
 tests/
   test_core.py
   test_ai.py
+  test_game.py
   test_cli.py
   test_tui.py
+  test_gui.py
 ```
 
 核心设计原则：
 
-- `core.py` 不依赖 CLI/TUI，方便未来接 GUI。
+- `core.py` 不依赖 CLI、TUI 或 GUI。
 - AI 只通过 `Board` 接口读写局面。
-- 普通 CLI 和 TUI 共用同一套棋盘与 AI 逻辑。
-- TUI 只负责交互和渲染，不重新实现规则。
+- CLI、TUI 和 GUI 共用 `GameSession` 管理回合、AI 落子、认输、停止、重开和结算。
+- 各界面只负责交互和渲染，不重新实现规则或 AI 对局推进。
 
 ## 测试
 
@@ -192,10 +231,11 @@ uv run pytest
 - AI 能阻挡对方一步必胜。
 - 普通 CLI 对局循环。
 - TUI 坐标映射、结算菜单、难度和黑白切换。
+- GUI 坐标映射、按钮命中、结算设置动作。
+- 共享 `GameSession` 的落子、非法落子、胜负、认输、重开和 `max_moves` 停止。
 
 ## 后续可扩展方向
 
-- 增加 Pygame 或其他图形界面。
 - 增加更完整的五子棋棋型评分。
 - 增加迭代加深和时间限制。
 - 增加棋谱保存、复盘和悔棋。

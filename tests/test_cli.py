@@ -44,3 +44,15 @@ def test_tui_shortcut_sets_ui_mode():
     args = build_parser().parse_args(["--tui", "--mode", "human-ai"])
 
     assert args.ui == "tui"
+
+
+def test_gui_shortcut_sets_ui_mode():
+    args = build_parser().parse_args(["--gui", "--mode", "human-ai"])
+
+    assert args.ui == "gui"
+
+
+def test_gui_ui_mode_is_available():
+    args = build_parser().parse_args(["--ui", "gui", "--mode", "ai-ai"])
+
+    assert args.ui == "gui"

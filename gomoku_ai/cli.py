@@ -2,22 +2,13 @@ from __future__ import annotations
 
 import argparse
 import time
-from dataclasses import dataclass
 from typing import Callable
 
-from gomoku_ai.ai import AlphaBetaAI
-from gomoku_ai.core import BLACK, DRAW, WHITE, Board, InvalidMoveError, STONE_NAMES, opponent, parse_move
+from gomoku_ai.core import BLACK, DRAW, WHITE, Board, InvalidMoveError, STONE_NAMES, parse_move
+from gomoku_ai.game import GameResult, GameSession, GameSettings, format_move
 
 InputFunc = Callable[[str], str]
 OutputFunc = Callable[..., None]
-
-
-@dataclass
-class GameResult:
-    winner: int | None
-    moves: int
-    elapsed: float
-    resigned: bool = False
 
 
 def main(argv: list[str] | None = None) -> GameResult:
@@ -31,6 +22,19 @@ def main(argv: list[str] | None = None) -> GameResult:
         from gomoku_ai.tui import play_tui
 
         return play_tui(
+            mode=args.mode,
+            size=args.size,
+            human_stone=_stone_from_name(args.human),
+            depth=args.depth,
+            black_depth=args.black_depth or args.depth,
+            white_depth=args.white_depth or args.depth,
+            delay=args.delay,
+            max_moves=args.max_moves,
+        )
+    if args.ui == "gui":
+        from gomoku_ai.gui import play_gui
+
+        return play_gui(
             mode=args.mode,
             size=args.size,
             human_stone=_stone_from_name(args.human),
@@ -66,8 +70,9 @@ def run() -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Play Gomoku against an alpha-beta AI.")
     parser.add_argument("--mode", choices=("human-ai", "ai-ai"))
-    parser.add_argument("--ui", choices=("plain", "tui"), default="plain")
+    parser.add_argument("--ui", choices=("plain", "tui", "gui"), default="plain")
     parser.add_argument("--tui", action="store_const", const="tui", dest="ui", help="Shortcut for --ui tui.")
+    parser.add_argument("--gui", action="store_const", const="gui", dest="ui", help="Shortcut for --ui gui.")
     parser.add_argument("--human", choices=("black", "white"), default="black")
     parser.add_argument("--depth", type=int, default=3)
     parser.add_argument("--black-depth", type=int)
@@ -102,38 +107,44 @@ def play_human_ai(
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
 ) -> GameResult:
-    board = Board(size=size)
-    ai_stone = opponent(human_stone)
-    ai = AlphaBetaAI(ai_stone, depth=depth)
-    current = BLACK
-    started = time.perf_counter()
+    session = GameSession(
+        GameSettings(
+            mode="human-ai",
+            size=size,
+            human_stone=human_stone,
+            depth=depth,
+            black_depth=depth,
+            white_depth=depth,
+            max_moves=max_moves,
+        )
+    )
 
-    output_func(board.render())
-    while max_moves is None or board.move_count < max_moves:
-        if current == human_stone:
-            move = _prompt_human_move(board, current, input_func, output_func)
+    output_func(session.board.render())
+    while session.result is None:
+        if not session.is_ai_turn():
+            move = _prompt_human_move(session.board, session.current, input_func, output_func)
             if move is None:
-                elapsed = time.perf_counter() - started
-                return GameResult(winner=opponent(human_stone), moves=board.move_count, elapsed=elapsed, resigned=True)
+                outcome = session.resign()
+                assert outcome.result is not None
+                return outcome.result
+            outcome = session.play_human_move(*move)
         else:
-            move = ai.choose_move(board)
-            output_func(f"AI ({STONE_NAMES[current]}) plays {_format_move(*move)}")
+            stone = session.current
+            outcome = session.play_ai_move()
+            if outcome.move is not None:
+                output_func(f"AI ({STONE_NAMES[stone]}) plays {_format_move(*outcome.move)}")
 
-        row, col = move
-        board.play(row, col, current)
-        output_func(board.render())
+        if outcome.move is not None and outcome.valid:
+            output_func(session.board.render())
+        elif not outcome.valid:
+            output_func(outcome.message)
 
-        result = board.winner_from(row, col)
-        if result is not None:
-            elapsed = time.perf_counter() - started
-            _print_result(result, board.move_count, elapsed, output_func)
-            return GameResult(winner=result, moves=board.move_count, elapsed=elapsed)
+        if outcome.result is not None:
+            _print_result(outcome.result, output_func)
+            return outcome.result
 
-        current = opponent(current)
-
-    elapsed = time.perf_counter() - started
-    output_func(f"Stopped after {board.move_count} moves.")
-    return GameResult(winner=None, moves=board.move_count, elapsed=elapsed)
+    assert session.result is not None
+    return session.result
 
 
 def play_ai_ai(
@@ -145,35 +156,35 @@ def play_ai_ai(
     max_moves: int | None = None,
     output_func: OutputFunc = print,
 ) -> GameResult:
-    board = Board(size=size)
-    players = {
-        BLACK: AlphaBetaAI(BLACK, depth=black_depth),
-        WHITE: AlphaBetaAI(WHITE, depth=white_depth),
-    }
-    current = BLACK
-    started = time.perf_counter()
+    session = GameSession(
+        GameSettings(
+            mode="ai-ai",
+            size=size,
+            black_depth=black_depth,
+            white_depth=white_depth,
+            max_moves=max_moves,
+        )
+    )
 
-    output_func(board.render())
-    while max_moves is None or board.move_count < max_moves:
-        move = players[current].choose_move(board)
-        row, col = move
-        board.play(row, col, current)
-        output_func(f"AI ({STONE_NAMES[current]}) plays {_format_move(row, col)}")
-        output_func(board.render())
+    output_func(session.board.render())
+    while session.result is None:
+        stone = session.current
+        outcome = session.play_ai_move()
+        if outcome.move is not None:
+            output_func(f"AI ({STONE_NAMES[stone]}) plays {_format_move(*outcome.move)}")
+            output_func(session.board.render())
+        elif not outcome.valid:
+            output_func(outcome.message)
 
-        result = board.winner_from(row, col)
-        if result is not None:
-            elapsed = time.perf_counter() - started
-            _print_result(result, board.move_count, elapsed, output_func)
-            return GameResult(winner=result, moves=board.move_count, elapsed=elapsed)
+        if outcome.result is not None:
+            _print_result(outcome.result, output_func)
+            return outcome.result
 
         if delay > 0:
             time.sleep(delay)
-        current = opponent(current)
 
-    elapsed = time.perf_counter() - started
-    output_func(f"Stopped after {board.move_count} moves.")
-    return GameResult(winner=None, moves=board.move_count, elapsed=elapsed)
+    assert session.result is not None
+    return session.result
 
 
 def _prompt_human_move(
@@ -195,15 +206,17 @@ def _prompt_human_move(
             output_func(f"Invalid move: {exc}")
 
 
-def _print_result(result: int, moves: int, elapsed: float, output_func: OutputFunc) -> None:
-    if result == DRAW:
-        output_func(f"Draw after {moves} moves. Time: {elapsed:.2f}s")
+def _print_result(result: GameResult, output_func: OutputFunc) -> None:
+    if result.winner == DRAW:
+        output_func(f"Draw after {result.moves} moves. Time: {result.elapsed:.2f}s")
+    elif result.winner in (BLACK, WHITE):
+        output_func(f"{STONE_NAMES[result.winner].capitalize()} wins after {result.moves} moves. Time: {result.elapsed:.2f}s")
     else:
-        output_func(f"{STONE_NAMES[result].capitalize()} wins after {moves} moves. Time: {elapsed:.2f}s")
+        output_func(f"Stopped after {result.moves} moves.")
 
 
 def _format_move(row: int, col: int) -> str:
-    return f"{chr(ord('A') + col)}{row + 1}"
+    return format_move(row, col)
 
 
 def _stone_from_name(name: str) -> int:

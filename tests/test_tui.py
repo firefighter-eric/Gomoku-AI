@@ -1,7 +1,7 @@
 import curses
 
-from gomoku_ai.cli import GameResult
 from gomoku_ai.core import BLACK, WHITE
+from gomoku_ai.game import GameResult
 from gomoku_ai.tui import BoardGeometry, _TuiGame, board_to_screen, screen_to_board
 
 
