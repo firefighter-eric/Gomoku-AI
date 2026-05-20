@@ -1,0 +1,23 @@
+[project]
+name = "gomoku-ai"
+version = "0.1.0"
+description = "A terminal Gomoku game with alpha-beta AI players."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+gomoku = "gomoku_ai.cli:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
