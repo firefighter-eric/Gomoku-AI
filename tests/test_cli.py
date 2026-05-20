@@ -46,6 +46,12 @@ def test_tui_shortcut_sets_ui_mode():
     assert args.ui == "tui"
 
 
+def test_default_depth_is_four():
+    args = build_parser().parse_args(["--mode", "human-ai"])
+
+    assert args.depth == 4
+
+
 def test_gui_shortcut_sets_ui_mode():
     args = build_parser().parse_args(["--gui", "--mode", "human-ai"])
 

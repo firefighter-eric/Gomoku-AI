@@ -44,25 +44,25 @@ uv run gomoku --help
 普通人机对战：
 
 ```bash
-uv run gomoku --mode human-ai --human black --depth 3
+uv run gomoku --mode human-ai --human black --depth 4
 ```
 
 TUI 人机对战：
 
 ```bash
-uv run gomoku --mode human-ai --human black --depth 3 --tui
+uv run gomoku --mode human-ai --human black --depth 4 --tui
 ```
 
 GUI 人机对战：
 
 ```bash
-uv run gomoku --mode human-ai --human black --depth 3 --ui gui
+uv run gomoku --mode human-ai --human black --depth 4 --ui gui
 ```
 
 AI 对 AI：
 
 ```bash
-uv run gomoku --mode ai-ai --black-depth 3 --white-depth 2 --delay 0.2
+uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 ```
 
 ## 代码结构约定
@@ -80,6 +80,7 @@ uv run gomoku --mode ai-ai --black-depth 3 --white-depth 2 --delay 0.2
 - 默认棋盘大小是 `15x15`。
 - 默认胜利条件是五连或更长连线。
 - 默认规则是自由规则五子棋。
+- 默认 AI 搜索深度是 `4`。
 - 黑棋先手。
 - 第一版不实现禁手、三三、四四、长连禁手等正式连珠规则。
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。

@@ -2,6 +2,14 @@ from gomoku_ai.core import BLACK, WHITE
 from gomoku_ai.game import GameSession, GameSettings
 
 
+def test_default_settings_use_depth_four():
+    settings = GameSettings()
+
+    assert settings.depth == 4
+    assert settings.black_depth == 4
+    assert settings.white_depth == 4
+
+
 def test_human_move_updates_board_and_turn():
     session = GameSession(GameSettings(mode="human-ai", size=5, human_stone=BLACK, depth=1))
 

@@ -190,9 +190,9 @@ def play_gui(
     mode: str,
     size: int = 15,
     human_stone: int = BLACK,
-    depth: int = 3,
-    black_depth: int = 3,
-    white_depth: int = 3,
+    depth: int = 4,
+    black_depth: int = 4,
+    white_depth: int = 4,
     delay: float = 0.0,
     max_moves: int | None = None,
 ) -> GameResult:

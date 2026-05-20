@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tui", action="store_const", const="tui", dest="ui", help="Shortcut for --ui tui.")
     parser.add_argument("--gui", action="store_const", const="gui", dest="ui", help="Shortcut for --ui gui.")
     parser.add_argument("--human", choices=("black", "white"), default="black")
-    parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--depth", type=int, default=4)
     parser.add_argument("--black-depth", type=int)
     parser.add_argument("--white-depth", type=int)
     parser.add_argument("--size", type=int, default=15)
@@ -102,7 +102,7 @@ def play_human_ai(
     *,
     size: int = 15,
     human_stone: int = BLACK,
-    depth: int = 3,
+    depth: int = 4,
     max_moves: int | None = None,
     input_func: InputFunc = input,
     output_func: OutputFunc = print,
@@ -150,8 +150,8 @@ def play_human_ai(
 def play_ai_ai(
     *,
     size: int = 15,
-    black_depth: int = 3,
-    white_depth: int = 3,
+    black_depth: int = 4,
+    white_depth: int = 4,
     delay: float = 0.0,
     max_moves: int | None = None,
     output_func: OutputFunc = print,
