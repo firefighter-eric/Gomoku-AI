@@ -19,6 +19,7 @@ from gomoku_ai.game import (
     column_label,
     result_message,
 )
+from gomoku_ai.players import PlayerSpec, available_algorithms
 
 BACKGROUND = (238, 235, 226)
 BOARD_FILL = (214, 169, 96)
@@ -36,6 +37,10 @@ BUTTON = (232, 225, 213)
 BUTTON_BORDER = (137, 123, 103)
 DISABLED = (206, 200, 190)
 BOARD_PADDING = 44
+PANEL_GAP = 28
+PANEL_INSET = 20
+PANEL_TITLE_TOP = 58
+DROPDOWN_ROW_HEIGHT = 30
 
 
 @dataclass(frozen=True)
@@ -66,14 +71,39 @@ class Button:
         return self.enabled and left <= x <= left + width and top <= y <= top + height
 
 
+@dataclass(frozen=True)
+class Dropdown:
+    action: str
+    label: str
+    value: str
+    rect: tuple[int, int, int, int]
+    options: tuple[str, ...]
+    enabled: bool = True
+
+    def contains(self, x: int, y: int) -> bool:
+        left, top, width, height = self.rect
+        return self.enabled and left <= x <= left + width and top <= y <= top + height
+
+    def option_at(self, x: int, y: int) -> str | None:
+        left, top, width, height = self.rect
+        if not self.enabled or not (left <= x <= left + width):
+            return None
+        options_top = top + height
+        index = (y - options_top) // DROPDOWN_ROW_HEIGHT
+        if not 0 <= index < len(self.options):
+            return None
+        return self.options[index]
+
+
 def create_layout(size: int) -> GuiLayout:
     cell_size = max(24, min(40, 520 // max(size - 1, 1)))
     left = 56
     top = 72
-    panel_left = left + (size - 1) * cell_size + 64
+    board_pixels = (size - 1) * cell_size
+    panel_left = left + board_pixels + BOARD_PADDING + PANEL_GAP + PANEL_INSET
     panel_width = 300
-    width = panel_left + panel_width + 40
-    height = max(top + (size - 1) * cell_size + 60, 620)
+    width = panel_left + panel_width + PANEL_INSET + 28
+    height = top + board_pixels + BOARD_PADDING + 28
     return GuiLayout(
         size=size,
         left=left,
@@ -88,6 +118,25 @@ def create_layout(size: int) -> GuiLayout:
 
 def board_to_pixel(row: int, col: int, layout: GuiLayout) -> tuple[int, int]:
     return layout.left + col * layout.cell_size, layout.top + row * layout.cell_size
+
+
+def board_frame_rect(layout: GuiLayout) -> pygame.Rect:
+    return pygame.Rect(
+        layout.left - BOARD_PADDING,
+        layout.top - BOARD_PADDING,
+        layout.board_pixels + BOARD_PADDING * 2,
+        layout.board_pixels + BOARD_PADDING * 2,
+    )
+
+
+def panel_frame_rect(layout: GuiLayout) -> pygame.Rect:
+    board_rect = board_frame_rect(layout)
+    return pygame.Rect(
+        layout.panel_left - PANEL_INSET,
+        board_rect.top,
+        layout.panel_width + PANEL_INSET * 2,
+        board_rect.height,
+    )
 
 
 def row_label_rect(row: int, layout: GuiLayout, font: pygame.font.Font) -> pygame.Rect:
@@ -137,8 +186,18 @@ def build_buttons(
     if settings.mode == "human-ai":
         buttons.extend(
             [
-                Button("depth_dec", "Difficulty -", (x, y, width // 2 - 6, 32)),
-                Button("depth_inc", "Difficulty +", (x + width // 2 + 6, y, width // 2 - 6, 32)),
+                Button(
+                    "depth_dec",
+                    "Difficulty -",
+                    (x, y, width // 2 - 6, 32),
+                    algorithm_uses_depth(settings.ai_algorithm),
+                ),
+                Button(
+                    "depth_inc",
+                    "Difficulty +",
+                    (x + width // 2 + 6, y, width // 2 - 6, 32),
+                    algorithm_uses_depth(settings.ai_algorithm),
+                ),
                 Button("side_toggle", "Switch Side", (x, y + row, width, 32)),
             ]
         )
@@ -147,10 +206,30 @@ def build_buttons(
         half = width // 2 - 6
         buttons.extend(
             [
-                Button("black_depth_dec", "Black -", (x, y, half, 32)),
-                Button("black_depth_inc", "Black +", (x + width // 2 + 6, y, half, 32)),
-                Button("white_depth_dec", "White -", (x, y + row, half, 32)),
-                Button("white_depth_inc", "White +", (x + width // 2 + 6, y + row, half, 32)),
+                Button(
+                    "black_depth_dec",
+                    "Black -",
+                    (x, y, half, 32),
+                    algorithm_uses_depth(settings.black_algorithm),
+                ),
+                Button(
+                    "black_depth_inc",
+                    "Black +",
+                    (x + width // 2 + 6, y, half, 32),
+                    algorithm_uses_depth(settings.black_algorithm),
+                ),
+                Button(
+                    "white_depth_dec",
+                    "White -",
+                    (x, y + row, half, 32),
+                    algorithm_uses_depth(settings.white_algorithm),
+                ),
+                Button(
+                    "white_depth_inc",
+                    "White +",
+                    (x + width // 2 + 6, y + row, half, 32),
+                    algorithm_uses_depth(settings.white_algorithm),
+                ),
             ]
         )
         y += row * 2
@@ -158,6 +237,28 @@ def build_buttons(
     buttons.append(Button("restart", "Restart", (x, y, width, 32)))
     buttons.append(Button("exit", "Exit", (x, y + row, width, 32)))
     return buttons
+
+
+def build_dropdowns(
+    settings: GameSettings,
+    result: GameResult | None,
+    layout: GuiLayout,
+    *,
+    top: int = 300,
+) -> list[Dropdown]:
+    if result is None:
+        return []
+
+    x = layout.panel_left
+    width = layout.panel_width
+    row = 40
+    options = available_algorithms()
+    if settings.mode == "human-ai":
+        return [Dropdown("ai_algorithm", "AI algorithm", settings.ai_algorithm, (x, top, width, 32), options)]
+    return [
+        Dropdown("black_algorithm", "Black AI", settings.black_algorithm, (x, top, width, 32), options),
+        Dropdown("white_algorithm", "White AI", settings.white_algorithm, (x, top + row, width, 32), options),
+    ]
 
 
 def adjusted_settings(settings: GameSettings, action: str) -> GameSettings:
@@ -181,17 +282,52 @@ def adjusted_settings(settings: GameSettings, action: str) -> GameSettings:
 def settings_lines(settings: GameSettings) -> list[str]:
     if settings.mode == "human-ai":
         return [
-            f"Difficulty: {settings.depth}",
+            f"Difficulty: {_depth_label(settings.ai_algorithm, settings.depth)}",
             f"Human: {STONE_NAMES[settings.human_stone]}",
         ]
     return [
-        f"Black depth: {settings.black_depth}",
-        f"White depth: {settings.white_depth}",
+        f"Black depth: {_depth_label(settings.black_algorithm, settings.black_depth)}",
+        f"White depth: {_depth_label(settings.white_algorithm, settings.white_depth)}",
     ]
 
 
-def panel_buttons_top(settings: GameSettings, status_line_count: int) -> int:
-    return 62 + 48 + 28 + 28 + 36 + status_line_count * 22 + 12 + len(settings_lines(settings)) * 28 + 10
+def panel_buttons_top(
+    settings: GameSettings,
+    status_line_count: int,
+    result: GameResult | None = None,
+) -> int:
+    dropdown_rows = 0
+    if result is not None:
+        dropdown_rows = 1 if settings.mode == "human-ai" else 2
+    return panel_dropdowns_top(settings, status_line_count) + dropdown_rows * 40 + 10
+
+
+def panel_dropdowns_top(settings: GameSettings, status_line_count: int) -> int:
+    return PANEL_TITLE_TOP + 48 + 28 + 28 + 36 + status_line_count * 22 + 12 + len(settings_lines(settings)) * 28 + 10
+
+
+def algorithm_label(algorithm: str) -> str:
+    spec = PlayerSpec(algorithm)
+    return f"{spec.registry_name}:{spec.version}"
+
+
+def algorithm_uses_depth(algorithm: str) -> bool:
+    return PlayerSpec(algorithm).normalized_algorithm != "v0"
+
+
+def _depth_label(algorithm: str, depth: int) -> str:
+    return str(depth) if algorithm_uses_depth(algorithm) else "-"
+
+
+def settings_with_algorithm(settings: GameSettings, action: str, algorithm: str) -> GameSettings:
+    normalized = PlayerSpec(algorithm).normalized_algorithm
+    if action == "ai_algorithm":
+        return replace(settings, ai_algorithm=normalized)
+    if action == "black_algorithm":
+        return replace(settings, black_algorithm=normalized)
+    if action == "white_algorithm":
+        return replace(settings, white_algorithm=normalized)
+    return settings
 
 
 def play_gui(
@@ -239,6 +375,7 @@ class PygameGomoku:
         self.message = "Black moves first."
         self.running = True
         self.last_ai_time = 0.0
+        self.open_dropdown: str | None = None
 
     def run(self) -> GameResult:
         try:
@@ -267,6 +404,20 @@ class PygameGomoku:
                 self._handle_click(*event.pos)
 
     def _handle_click(self, x: int, y: int) -> None:
+        if self.open_dropdown is not None:
+            active = next((dropdown for dropdown in self._dropdowns() if dropdown.action == self.open_dropdown), None)
+            option = active.option_at(x, y) if active is not None else None
+            self.open_dropdown = None
+            if option is not None:
+                self.settings = settings_with_algorithm(self.settings, active.action, option)
+                self.message = "Settings updated. Press Restart."
+                return
+
+        for dropdown in self._dropdowns():
+            if dropdown.contains(x, y):
+                self.open_dropdown = None if self.open_dropdown == dropdown.action else dropdown.action
+                return
+
         for button in self._buttons():
             if button.contains(x, y):
                 self._apply_action(button.action)
@@ -289,6 +440,7 @@ class PygameGomoku:
             self.session.restart(self.settings)
             self.message = "New game started."
             self.last_ai_time = 0.0
+            self.open_dropdown = None
             return
         if action == "resign":
             self._apply_outcome(self.session.resign())
@@ -300,6 +452,7 @@ class PygameGomoku:
         if self.session.result is not None:
             self.settings = adjusted_settings(self.settings, action)
             self.message = "Settings updated. Press Restart."
+            self.open_dropdown = None
 
     def _maybe_play_ai(self) -> None:
         if self.session.result is not None or not self.session.is_ai_turn():
@@ -328,12 +481,7 @@ class PygameGomoku:
         self._draw_panel()
 
     def _draw_board(self) -> None:
-        board_rect = pygame.Rect(
-            self.layout.left - BOARD_PADDING,
-            self.layout.top - BOARD_PADDING,
-            self.layout.board_pixels + BOARD_PADDING * 2,
-            self.layout.board_pixels + BOARD_PADDING * 2,
-        )
+        board_rect = board_frame_rect(self.layout)
         pygame.draw.rect(self.screen, BOARD_FILL, board_rect, border_radius=6)
         pygame.draw.rect(self.screen, BOARD_EDGE, board_rect, width=2, border_radius=6)
 
@@ -366,11 +514,11 @@ class PygameGomoku:
             pygame.draw.circle(self.screen, WHITE_STONE, (x, y), radius - 2)
 
     def _draw_panel(self) -> None:
-        panel_rect = pygame.Rect(self.layout.panel_left - 20, 36, self.layout.panel_width + 40, self.layout.height - 72)
+        panel_rect = panel_frame_rect(self.layout)
         pygame.draw.rect(self.screen, PANEL, panel_rect, border_radius=8)
         pygame.draw.rect(self.screen, BUTTON_BORDER, panel_rect, width=1, border_radius=8)
 
-        y = 62
+        y = panel_rect.top + 30
         self._draw_text("Gomoku-AI", (self.layout.panel_left, y), self.title_font, TEXT)
         y += 48
         self._draw_text(f"Mode: {self._mode_label()}", (self.layout.panel_left, y), self.font, TEXT)
@@ -388,12 +536,21 @@ class PygameGomoku:
             self._draw_text(line, (self.layout.panel_left, y), self.font, TEXT)
             y += 28
 
-        for button in self._buttons():
-            self._draw_button(button)
+        for dropdown in self._dropdowns():
+            self._draw_dropdown(dropdown, expanded=False)
+
+        if self.open_dropdown is None:
+            for button in self._buttons():
+                self._draw_button(button)
+
+        if self.open_dropdown is not None:
+            dropdown = next((item for item in self._dropdowns() if item.action == self.open_dropdown), None)
+            if dropdown is not None:
+                self._draw_dropdown(dropdown, expanded=True)
 
         if self.session.result is not None:
-            self._draw_text("Settlement", (self.layout.panel_left, self.layout.height - 90), self.font, ACCENT_DARK)
-            self._draw_text("Adjust settings, then restart.", (self.layout.panel_left, self.layout.height - 62), self.small_font, MUTED)
+            self._draw_text("Settlement", (self.layout.panel_left, panel_rect.bottom - 60), self.font, ACCENT_DARK)
+            self._draw_text("Adjust settings, then restart.", (self.layout.panel_left, panel_rect.bottom - 32), self.small_font, MUTED)
 
     def _draw_button(self, button: Button) -> None:
         rect = pygame.Rect(button.rect)
@@ -404,6 +561,33 @@ class PygameGomoku:
         text_rect = surface.get_rect(center=rect.center)
         self.screen.blit(surface, text_rect)
 
+    def _draw_dropdown(self, dropdown: Dropdown, *, expanded: bool) -> None:
+        label_rect = pygame.Rect(dropdown.rect)
+        fill = BUTTON if dropdown.enabled else DISABLED
+        pygame.draw.rect(self.screen, fill, label_rect, border_radius=5)
+        pygame.draw.rect(self.screen, BUTTON_BORDER, label_rect, width=1, border_radius=5)
+        self._draw_text(dropdown.label, (label_rect.left, label_rect.top - 22), self.small_font, MUTED)
+
+        selected = algorithm_label(dropdown.value)
+        surface = self.font.render(selected, True, TEXT if dropdown.enabled else MUTED)
+        self.screen.blit(surface, (label_rect.left + 12, label_rect.top + 6))
+        arrow = "v" if not expanded else "^"
+        arrow_surface = self.font.render(arrow, True, MUTED)
+        self.screen.blit(arrow_surface, (label_rect.right - 24, label_rect.top + 6))
+
+        if not expanded:
+            return
+
+        left, top, width, height = dropdown.rect
+        options_top = top + height
+        for index, option in enumerate(dropdown.options):
+            option_rect = pygame.Rect(left, options_top + index * DROPDOWN_ROW_HEIGHT, width, DROPDOWN_ROW_HEIGHT)
+            selected_fill = ACCENT if option == dropdown.value else PANEL
+            selected_text = PANEL if option == dropdown.value else TEXT
+            pygame.draw.rect(self.screen, selected_fill, option_rect)
+            pygame.draw.rect(self.screen, BUTTON_BORDER, option_rect, width=1)
+            self._draw_text(algorithm_label(option), (option_rect.left + 12, option_rect.top + 5), self.small_font, selected_text)
+
     def _draw_text(self, text: str, pos: tuple[int, int], font: pygame.font.Font, color: tuple[int, int, int]) -> None:
         surface = font.render(text, True, color)
         self.screen.blit(surface, pos)
@@ -413,7 +597,15 @@ class PygameGomoku:
             self.settings,
             self.session.result,
             self.layout,
-            top=panel_buttons_top(self.settings, len(self._status_lines())),
+            top=panel_buttons_top(self.settings, len(self._status_lines()), self.session.result),
+        )
+
+    def _dropdowns(self) -> list[Dropdown]:
+        return build_dropdowns(
+            self.settings,
+            self.session.result,
+            self.layout,
+            top=panel_dropdowns_top(self.settings, len(self._status_lines())),
         )
 
     def _status_lines(self) -> list[str]:
