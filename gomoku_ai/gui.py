@@ -238,9 +238,9 @@ class PygameGomoku:
         try:
             while self.running:
                 self._handle_events()
-                self._maybe_play_ai()
                 self._draw()
                 pygame.display.flip()
+                self._maybe_play_ai()
                 self.clock.tick(60)
         finally:
             pygame.quit()
@@ -272,6 +272,8 @@ class PygameGomoku:
 
         outcome = self.session.play_human_move(*move)
         self._apply_outcome(outcome)
+        if outcome.valid and not outcome.finished and self.session.is_ai_turn():
+            self._set_ai_thinking_message()
 
     def _apply_action(self, action: str) -> None:
         if action == "exit":
@@ -304,6 +306,9 @@ class PygameGomoku:
         outcome = self.session.play_ai_move()
         self.last_ai_time = now
         self._apply_outcome(outcome)
+
+    def _set_ai_thinking_message(self) -> None:
+        self.message = f"AI ({STONE_NAMES[self.session.current]}) thinking..."
 
     def _apply_outcome(self, outcome: TurnOutcome) -> None:
         if outcome.result is not None:

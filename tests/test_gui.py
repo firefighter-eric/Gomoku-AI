@@ -3,6 +3,7 @@ import pygame
 from gomoku_ai.core import BLACK, WHITE
 from gomoku_ai.game import MAX_UI_DEPTH, GameResult, GameSettings
 from gomoku_ai.gui import (
+    PygameGomoku,
     adjusted_settings,
     board_to_pixel,
     build_buttons,
@@ -96,3 +97,46 @@ def test_panel_buttons_follow_status_and_settings_text():
 
     assert panel_buttons_top(settings, status_line_count) >= settings_bottom + 10
     assert panel_buttons_top(settings, 3) > panel_buttons_top(settings, 1)
+
+
+def test_human_click_shows_move_and_ai_thinking_before_ai_turn(monkeypatch):
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    game = PygameGomoku(settings=GameSettings(mode="human-ai", size=5, human_stone=BLACK, depth=1))
+    try:
+        x, y = board_to_pixel(2, 2, game.layout)
+
+        game._handle_click(x, y)
+
+        assert game.session.board.grid[2][2] == BLACK
+        assert game.session.current == WHITE
+        assert game.session.is_ai_turn()
+        assert game.message == "AI (white) thinking..."
+    finally:
+        pygame.quit()
+
+
+def test_gui_loop_flips_frame_before_ai_calculation(monkeypatch):
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    game = PygameGomoku(settings=GameSettings(mode="human-ai", size=5, human_stone=BLACK, depth=1))
+    calls = []
+
+    class FakeClock:
+        def tick(self, fps: int) -> None:
+            calls.append(f"tick:{fps}")
+
+    def handle_events() -> None:
+        calls.append("events")
+        game.running = False
+
+    try:
+        game.clock = FakeClock()
+        monkeypatch.setattr(game, "_handle_events", handle_events)
+        monkeypatch.setattr(game, "_draw", lambda: calls.append("draw"))
+        monkeypatch.setattr(game, "_maybe_play_ai", lambda: calls.append("ai"))
+        monkeypatch.setattr(pygame.display, "flip", lambda: calls.append("flip"))
+
+        game.run()
+
+        assert calls == ["events", "draw", "flip", "ai", "tick:60"]
+    finally:
+        pygame.quit()
