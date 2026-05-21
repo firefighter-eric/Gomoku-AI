@@ -164,22 +164,28 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 运行批量对比：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v2 --second random --second-version v0 --first-depth 4 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-对比第二版和第三版：
+正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比固定 8 场，并默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 20
-```
+最新 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；完整明细和耗时见 [docs/evaluation-results.md](docs/evaluation-results.md)。
 
 对比第一版和第二版：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-默认会交替先后手，输出双方胜局、平局、提前停止局数、平均手数和每局明细。新增算法时，只要实现 `choose_move(board)` 并在 `gomoku_ai/players.py` 中注册，就可以被 `GameSession`、AI 对 AI 和 `gomoku-eval` 复用。
+对比第一版和第三版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
+默认会交替先后手，输出双方胜局、平局、提前停止局数、平均手数和每局明细。评测结果记录在 [docs/evaluation-results.md](docs/evaluation-results.md)。新增算法时，只要实现 `choose_move(board)` 并在 `gomoku_ai/players.py` 中注册，就可以被 `GameSession`、AI 对 AI 和 `gomoku-eval` 复用。
+
+`gomoku-eval` 默认 `--jobs 0`，表示每局比赛使用一个独立进程并行运行；需要排查问题或复现实验调度时，可以设置 `--jobs 1` 改回串行。
 
 ## 算法版本演进
 

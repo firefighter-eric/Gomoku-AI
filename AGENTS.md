@@ -68,19 +68,23 @@ uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 算法对比：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v2 --second random --second-version v0 --first-depth 4 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-对比第二版和第三版：
+正式算法评测以 `alpha-beta:v1` 为固定基线，每组对比 8 场，默认交替先后手。当前正式基线记录只跑 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 20
-```
+`gomoku-eval` 默认 `--jobs 0`，即每局比赛一个独立进程；长深度评测优先使用这个默认并行方式。如果需要调试单局或排查非确定性问题，再显式设置 `--jobs 1`。
 
 对比第一版和第二版：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
+对比第一版和第三版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
 ## 代码结构约定
@@ -94,6 +98,7 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 - `gomoku_ai/tui.py`：`curses` 终端界面、方向键/鼠标交互、结算菜单。
 - `gomoku_ai/gui.py`：Pygame 图形界面、棋盘绘制、鼠标点击和 GUI 结算操作。
 - `docs/algorithm-versions.md`：不同算法版本的详细说明、对比命令和新增版本约定。
+- `docs/evaluation-results.md`：算法对局评测结果记录。正式强弱记录以 `v1` 为基线，每组 8 场。
 - `tests/`：每个模块对应测试文件，新增行为必须补测试。
 
 ## 产品与规则约定
@@ -105,6 +110,7 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 - 默认注册名是 `alpha-beta`，默认版本是 `v2`。
 - `random:v0` 是随机基线，`alpha-beta:v1` 是第一版，`alpha-beta:v2` 是第二版，`alpha-beta:v3` 是第三版。
 - 注册名不要使用 `v0`、`v1` 这样的版本号；版本号通过 `version` 字段或 CLI 的 `--*-version` 参数表达。
+- 正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比 8 场；当前每轮只跑 `v2`、`v3` 与它比赛并记录结果，不再跑 `v0`。
 - 黑棋先手。
 - 第一版不实现禁手、三三、四四、长连禁手等正式连珠规则。
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。
@@ -139,7 +145,8 @@ uv run pytest
 
 涉及算法抽象或评测时，还需要确认：
 
-- `uv run gomoku-eval --first alpha-beta --first-version v2 --second random --second-version v0 --first-depth 1 --games 2 --size 5 --max-moves 2` 能输出对比结果。
+- `uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2` 能输出对比结果。
+- `uv run gomoku-eval --first random --first-version v0 --second random --second-version v0 --games 2 --size 5 --max-moves 1 --jobs 2` 能并行输出对比结果。
 - 新算法必须通过统一玩家接口进入 `GameSession`，不要在 CLI、TUI 或 GUI 中按算法类型分支重写对局推进。
 - 新算法需要有工厂注册、至少一个行为测试，以及必要时的对局评测测试。
 - 算法版本升级要同步 README 的版本演进说明，并补棋型、候选裁剪或评测相关测试。

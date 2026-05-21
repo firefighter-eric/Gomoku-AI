@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, replace
 
 from gomoku_ai.core import BLACK, DRAW, WHITE, Board, STONE_NAMES, opponent
 from gomoku_ai.players import ALGORITHM_NAMES, REGISTRY_NAME_CHOICES, PlayerSpec, create_player, resolve_algorithm_version
+
+
+DEFAULT_EVALUATION_GAMES = 8
+DEFAULT_EVALUATION_JOBS = 0
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,17 @@ class MatchRecord:
         if self.winner == WHITE:
             return self.white_role
         return None
+
+
+@dataclass(frozen=True)
+class MatchTask:
+    index: int
+    black: PlayerSpec
+    white: PlayerSpec
+    size: int
+    max_moves: int | None
+    black_role: str | None
+    white_role: str | None
 
 
 @dataclass(frozen=True)
@@ -116,19 +132,16 @@ def play_match(
     )
 
 
-def compare_players(
+def build_match_tasks(
     first: PlayerSpec,
     second: PlayerSpec,
     *,
-    games: int = 10,
-    size: int = 15,
-    max_moves: int | None = None,
-    alternate_colors: bool = True,
-) -> ComparisonSummary:
-    if games < 1:
-        raise ValueError("games must be at least 1")
-
-    records: list[MatchRecord] = []
+    games: int,
+    size: int,
+    max_moves: int | None,
+    alternate_colors: bool,
+) -> tuple[MatchTask, ...]:
+    tasks: list[MatchTask] = []
     for index in range(games):
         seeded_first = replace(first, seed=first.seed + index * 2)
         seeded_second = replace(second, seed=second.seed + index * 2 + 1)
@@ -144,17 +157,68 @@ def compare_players(
             black_role = "first"
             white_role = "second"
 
-        records.append(
-            play_match(
-                black,
-                white,
+        tasks.append(
+            MatchTask(
+                index=index,
+                black=black,
+                white=white,
                 size=size,
                 max_moves=max_moves,
                 black_role=black_role,
                 white_role=white_role,
             )
         )
+    return tuple(tasks)
 
+
+def _play_match_task(task: MatchTask) -> tuple[int, MatchRecord]:
+    return task.index, play_match(
+        task.black,
+        task.white,
+        size=task.size,
+        max_moves=task.max_moves,
+        black_role=task.black_role,
+        white_role=task.white_role,
+    )
+
+
+def _worker_count(games: int, jobs: int) -> int:
+    if jobs < 0:
+        raise ValueError("jobs must be 0 or greater")
+    if jobs == 0:
+        return games
+    return min(jobs, games)
+
+
+def compare_players(
+    first: PlayerSpec,
+    second: PlayerSpec,
+    *,
+    games: int = DEFAULT_EVALUATION_GAMES,
+    size: int = 15,
+    max_moves: int | None = None,
+    alternate_colors: bool = True,
+    jobs: int = 1,
+) -> ComparisonSummary:
+    if games < 1:
+        raise ValueError("games must be at least 1")
+
+    tasks = build_match_tasks(
+        first,
+        second,
+        games=games,
+        size=size,
+        max_moves=max_moves,
+        alternate_colors=alternate_colors,
+    )
+    worker_count = _worker_count(games, jobs)
+    if worker_count == 1:
+        indexed_records = [_play_match_task(task) for task in tasks]
+    else:
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            indexed_records = list(executor.map(_play_match_task, tasks))
+
+    records = [record for _, record in sorted(indexed_records, key=lambda item: item[0])]
     return ComparisonSummary(first=first, second=second, records=tuple(records))
 
 
@@ -189,7 +253,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--second-version", choices=ALGORITHM_NAMES)
     parser.add_argument("--first-depth", type=int, default=4)
     parser.add_argument("--second-depth", type=int, default=1)
-    parser.add_argument("--games", type=int, default=10)
+    parser.add_argument("--games", type=int, default=DEFAULT_EVALUATION_GAMES)
+    parser.add_argument("--jobs", type=int, default=DEFAULT_EVALUATION_JOBS, help="Parallel worker count. Use 0 to run one process per game.")
     parser.add_argument("--size", type=int, default=15)
     parser.add_argument("--max-moves", type=int)
     parser.add_argument("--no-alternate-colors", action="store_true")
@@ -205,6 +270,7 @@ def main(argv: list[str] | None = None) -> ComparisonSummary:
         size=args.size,
         max_moves=args.max_moves,
         alternate_colors=not args.no_alternate_colors,
+        jobs=args.jobs,
     )
     print(format_summary(summary))
     return summary

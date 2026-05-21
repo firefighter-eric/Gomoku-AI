@@ -134,28 +134,26 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 uv run gomoku --help
 ```
 
-第一版对第二版：
+正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+
+最新 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
+
+第二版对第一版：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-第二版对第三版：
+第三版对第一版：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-第一版对第三版：
+第二版对第三版属于探索性横向对比，不替代基线记录：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 20
-```
-
-第三版对随机基线：
-
-```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second random --second-version v0 --first-depth 4 --games 20
+uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 8
 ```
 
 快速冒烟测试：
@@ -164,7 +162,7 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second random --secon
 uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 4
 ```
 
-`gomoku-eval` 默认交替先后手，输出双方胜局、平局、提前停止局数、平均手数和每局明细。用 `--no-alternate-colors` 可以固定第一方执黑。
+`gomoku-eval` 默认交替先后手，默认场数为 8，默认 `--jobs 0` 表示每局比赛一个独立进程并行运行。输出双方胜局、平局、提前停止局数、平均手数和每局明细。用 `--no-alternate-colors` 可以固定第一方执黑；用 `--jobs 1` 可以改回串行评测。
 
 ## 新增算法版本的约定
 
