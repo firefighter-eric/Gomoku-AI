@@ -65,14 +65,35 @@ AI 对 AI：
 uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 ```
 
+算法对比：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v2 --second random --second-version v0 --first-depth 4 --games 20
+```
+
+对比第二版和第三版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 20
+```
+
+对比第一版和第二版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 20
+```
+
 ## 代码结构约定
 
 - `gomoku_ai/core.py`：只放棋盘、规则、落子、胜负检测、坐标解析和基础渲染。不要让它依赖 CLI、TUI、GUI 或 AI。
-- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。
+- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。当前 `v1` 是第一版历史复刻，`v2` 保留为第二版默认算法，`v3` 是全面检查后的第三版。
+- `gomoku_ai/players.py`：放 AI 玩家协议、算法配置、算法注册和玩家工厂。新增算法应在这里注册，并实现 `choose_move(board)`。
+- `gomoku_ai/evaluate.py`：放 AI 对 AI 批量评测逻辑和 `gomoku-eval` 命令入口，不要把评测循环塞进界面层。
 - `gomoku_ai/game.py`：CLI、TUI、GUI 共用的对局会话、设置、回合结果和结算结果。
 - `gomoku_ai/cli.py`：普通文本命令行入口和文本输入输出，不重新实现对局规则。
 - `gomoku_ai/tui.py`：`curses` 终端界面、方向键/鼠标交互、结算菜单。
 - `gomoku_ai/gui.py`：Pygame 图形界面、棋盘绘制、鼠标点击和 GUI 结算操作。
+- `docs/algorithm-versions.md`：不同算法版本的详细说明、对比命令和新增版本约定。
 - `tests/`：每个模块对应测试文件，新增行为必须补测试。
 
 ## 产品与规则约定
@@ -81,6 +102,9 @@ uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 - 默认胜利条件是五连或更长连线。
 - 默认规则是自由规则五子棋。
 - 默认 AI 搜索深度是 `4`。
+- 默认注册名是 `alpha-beta`，默认版本是 `v2`。
+- `random:v0` 是随机基线，`alpha-beta:v1` 是第一版，`alpha-beta:v2` 是第二版，`alpha-beta:v3` 是第三版。
+- 注册名不要使用 `v0`、`v1` 这样的版本号；版本号通过 `version` 字段或 CLI 的 `--*-version` 参数表达。
 - 黑棋先手。
 - 第一版不实现禁手、三三、四四、长连禁手等正式连珠规则。
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。
@@ -88,6 +112,7 @@ uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 ## 文档约定
 
 - README 必须保持中文。
+- 算法版本说明必须同步维护 `docs/algorithm-versions.md`。
 - 用户可见的新功能、启动命令、参数和交互方式需要同步到 README。
 - 如果改变项目架构、规则边界、测试命令或维护约定，需要同步更新本文件。
 - 不要只在聊天里解释重要行为，应该把稳定约定写进文档。
@@ -112,9 +137,18 @@ uv run pytest
 - GUI 坐标映射、按钮命中和结算设置动作有单元测试覆盖。
 - GUI 对局结束后不会自动退出，仍停留在结算界面。
 
+涉及算法抽象或评测时，还需要确认：
+
+- `uv run gomoku-eval --first alpha-beta --first-version v2 --second random --second-version v0 --first-depth 1 --games 2 --size 5 --max-moves 2` 能输出对比结果。
+- 新算法必须通过统一玩家接口进入 `GameSession`，不要在 CLI、TUI 或 GUI 中按算法类型分支重写对局推进。
+- 新算法需要有工厂注册、至少一个行为测试，以及必要时的对局评测测试。
+- 算法版本升级要同步 README 的版本演进说明，并补棋型、候选裁剪或评测相关测试。
+
 ## 维护原则
 
 - 保持核心逻辑与界面分离，避免把规则或对局推进重复写进 CLI/TUI/GUI。
+- 保持算法实现与评测框架分离；新增算法应通过 `players.py` 暴露，评测应复用统一玩家接口。
+- 保留可比较的旧算法版本，除非用户明确要求替换；面向棋力改进时优先新增版本，便于 `gomoku-eval` 做 A/B 对战。
 - 保持 AI 参数可控，默认不要让一手棋等待过久。
 - AI 性能很依赖候选点排序与候选宽度。不要把 `_move_order_score` 改回全盘评分，也不要在必胜判断中复制棋盘；高深度搜索应保留深层候选收窄策略。
 - 优先补行为级测试，而不是只测试实现细节。

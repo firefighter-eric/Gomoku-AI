@@ -8,6 +8,9 @@ def test_default_settings_use_depth_four():
     assert settings.depth == 4
     assert settings.black_depth == 4
     assert settings.white_depth == 4
+    assert settings.ai_algorithm == "v2"
+    assert settings.black_algorithm == "v2"
+    assert settings.white_algorithm == "v2"
 
 
 def test_human_move_updates_board_and_turn():
@@ -85,6 +88,21 @@ def test_ai_ai_move_can_stop_at_max_moves():
     assert outcome.result is not None
     assert outcome.result.winner is None
     assert outcome.result.moves == 1
+
+
+def test_ai_players_can_use_configured_algorithms():
+    session = GameSession(
+        GameSettings(
+            mode="ai-ai",
+            size=5,
+            black_algorithm="v0",
+            white_algorithm="v0",
+            max_moves=1,
+        )
+    )
+
+    assert session.players[BLACK].name == "v0"
+    assert session.players[WHITE].name == "v0"
 
 
 def test_session_stops_before_move_when_max_moves_is_already_reached():

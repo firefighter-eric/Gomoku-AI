@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 gomoku = "gomoku_ai.cli:run"
+gomoku-eval = "gomoku_ai.evaluate:run"
 
 [build-system]
 requires = ["hatchling"]

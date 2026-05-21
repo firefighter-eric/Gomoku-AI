@@ -52,7 +52,10 @@ def play_tui(
     mode: str,
     size: int = 15,
     human_stone: int = BLACK,
+    ai_algorithm: str = "v2",
     depth: int = 4,
+    black_algorithm: str = "v2",
+    white_algorithm: str = "v2",
     black_depth: int = 4,
     white_depth: int = 4,
     delay: float = 0.0,
@@ -63,7 +66,10 @@ def play_tui(
         mode,
         size,
         human_stone,
+        ai_algorithm,
         depth,
+        black_algorithm,
+        white_algorithm,
         black_depth,
         white_depth,
         delay,
@@ -76,7 +82,10 @@ def _run_tui(
     mode: str,
     size: int,
     human_stone: int,
+    ai_algorithm: str,
     depth: int,
+    black_algorithm: str,
+    white_algorithm: str,
     black_depth: int,
     white_depth: int,
     delay: float,
@@ -87,7 +96,10 @@ def _run_tui(
         mode=mode,
         size=size,
         human_stone=human_stone,
+        ai_algorithm=ai_algorithm,
         depth=depth,
+        black_algorithm=black_algorithm,
+        white_algorithm=white_algorithm,
         black_depth=black_depth,
         white_depth=white_depth,
         delay=delay,
@@ -104,7 +116,10 @@ class _TuiGame:
         mode: str,
         size: int,
         human_stone: int,
+        ai_algorithm: str,
         depth: int,
+        black_algorithm: str,
+        white_algorithm: str,
         black_depth: int,
         white_depth: int,
         delay: float,
@@ -113,7 +128,10 @@ class _TuiGame:
         self.stdscr = stdscr
         self.mode = mode
         self.size = size
+        self.ai_algorithm = ai_algorithm
         self.depth = depth
+        self.black_algorithm = black_algorithm
+        self.white_algorithm = white_algorithm
         self.black_depth = black_depth
         self.white_depth = white_depth
         self.human_stone = human_stone
@@ -188,6 +206,9 @@ class _TuiGame:
             mode=self.mode,
             size=self.size,
             human_stone=self.human_stone,
+            ai_algorithm=self.ai_algorithm,
+            black_algorithm=self.black_algorithm,
+            white_algorithm=self.white_algorithm,
             depth=self.depth,
             black_depth=self.black_depth,
             white_depth=self.white_depth,

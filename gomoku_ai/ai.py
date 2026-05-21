@@ -42,6 +42,8 @@ class ZobristHasher:
 class AlphaBetaAI:
     """Alpha-beta Gomoku AI with heuristic move ordering and Zobrist caches."""
 
+    name = "v2"
+
     def __init__(
         self,
         stone: int,
@@ -61,6 +63,7 @@ class AlphaBetaAI:
         self.candidate_limit = candidate_limit
         self.seed = seed
         self._hasher: ZobristHasher | None = None
+        self._hash_size: int | None = None
         self._eval_cache: dict[int, int] = {}
         self._search_cache: dict[tuple[int, int, int], int] = {}
         self.stats = SearchStats()
@@ -234,13 +237,137 @@ class AlphaBetaAI:
         return score
 
     def _ensure_hasher(self, size: int) -> None:
-        if self._hasher is None:
+        if self._hasher is None or self._hash_size != size:
             self._hasher = ZobristHasher(size, self.seed)
+            self._hash_size = size
+            self._eval_cache.clear()
+            self._search_cache.clear()
 
     def _hash(self, board: Board) -> int:
         self._ensure_hasher(board.size)
         assert self._hasher is not None
         return self._hasher.hash_board(board)
+
+
+class AlphaBetaV1AI(AlphaBetaAI):
+    """Historical alpha-beta variant kept for algorithm comparison."""
+
+    name = "v1"
+
+    def choose_move(self, board: Board) -> tuple[int, int]:
+        if board.is_empty():
+            center = board.size // 2
+            return center, center
+
+        winning_move = find_immediate_win_by_simulation(board, self.stone, self.candidate_radius)
+        if winning_move is not None:
+            return winning_move
+
+        blocking_move = find_immediate_win_by_simulation(board, opponent(self.stone), self.candidate_radius)
+        if blocking_move is not None:
+            return blocking_move
+
+        self._ensure_hasher(board.size)
+        self.stats = SearchStats()
+        candidates = self._ordered_candidates(board, self.stone, limit=self.candidate_limit)
+        best_move = candidates[0]
+        best_value = -inf
+        alpha = -inf
+        beta = inf
+
+        for row, col in candidates:
+            next_board = board.with_move(row, col, self.stone)
+            value = self._alpha_beta(
+                next_board,
+                depth=self.depth - 1,
+                alpha=alpha,
+                beta=beta,
+                current_stone=opponent(self.stone),
+                last_move=(row, col),
+            )
+            if value > best_value:
+                best_value = value
+                best_move = (row, col)
+            alpha = max(alpha, best_value)
+
+        return best_move
+
+    def _ordered_candidates(
+        self,
+        board: Board,
+        stone: int,
+        *,
+        limit: int | None,
+    ) -> list[tuple[int, int]]:
+        candidates = generate_candidate_moves(board, radius=self.candidate_radius)
+        scored = [
+            (_global_score_after_move(board, row, col, stone), row, col)
+            for row, col in candidates
+        ]
+        scored.sort(reverse=True)
+        if limit is not None and len(scored) > limit:
+            scored = scored[:limit]
+        return [(row, col) for _score, row, col in scored]
+
+    def _candidate_limit_for_depth(self, depth: int) -> int:
+        return self.candidate_limit
+
+
+class AlphaBetaV3AI(AlphaBetaAI):
+    """Stronger alpha-beta variant with richer shape scoring and tactical guards."""
+
+    name = "v3"
+
+    def _ordered_candidates(
+        self,
+        board: Board,
+        stone: int,
+        *,
+        limit: int | None,
+    ) -> list[tuple[int, int]]:
+        candidates = generate_candidate_moves(board, radius=self.candidate_radius)
+        scored = [
+            (self._move_order_score(board, row, col, stone), row, col)
+            for row, col in candidates
+        ]
+        scored.sort(reverse=True)
+
+        selected: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for _score, row, col in scored:
+            move = (row, col)
+            is_within_limit = limit is None or len(selected) < limit
+            if is_within_limit or _is_v3_tactical_candidate(board, row, col, stone):
+                if move not in seen:
+                    selected.append(move)
+                    seen.add(move)
+        return selected
+
+    def _move_order_score(self, board: Board, row: int, col: int, stone: int) -> int:
+        center = (board.size - 1) / 2
+        center_bonus = int((board.size - abs(center - row) - abs(center - col)) * 10)
+
+        if _move_wins(board, row, col, stone):
+            return WIN_SCORE
+        if _move_wins(board, row, col, opponent(stone)):
+            return WIN_SCORE - 1
+
+        own_score = _v3_local_score_after_move(board, row, col, stone)
+        blocking_score = _v3_local_score_after_move(board, row, col, opponent(stone))
+        neighbor_bonus = _neighbor_count(board, row, col) * 20
+        return own_score * 2 + int(blocking_score * 1.5) + center_bonus + neighbor_bonus
+
+    def _evaluate(self, board: Board) -> int:
+        key = self._hash(board)
+        if key in self._eval_cache:
+            self.stats.cache_hits += 1
+            return self._eval_cache[key]
+
+        own = _evaluate_for_v3(board, self.stone)
+        enemy = _evaluate_for_v3(board, opponent(self.stone))
+        score = own - int(enemy * 1.16) + _center_bias(board, self.stone)
+        self._eval_cache[key] = score
+        return score
 
 
 def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, int]]:
@@ -268,6 +395,18 @@ def find_immediate_win(
 ) -> tuple[int, int] | None:
     for row, col in generate_candidate_moves(board, radius=radius):
         if _move_wins(board, row, col, stone):
+            return row, col
+    return None
+
+
+def find_immediate_win_by_simulation(
+    board: Board,
+    stone: int,
+    radius: int = 2,
+) -> tuple[int, int] | None:
+    for row, col in generate_candidate_moves(board, radius=radius):
+        child = board.with_move(row, col, stone)
+        if child.winner_from(row, col) == stone:
             return row, col
     return None
 
@@ -314,6 +453,59 @@ def _local_score_after_move(board: Board, row: int, col: int, stone: int) -> int
         open_ends = int(left_open) + int(right_open)
         score += _score_shape(count, open_ends)
     return score
+
+
+def _global_score_after_move(board: Board, row: int, col: int, stone: int) -> int:
+    if not board.is_empty_at(row, col):
+        return -WIN_SCORE
+    child = board.with_move(row, col, stone)
+    own = _evaluate_for(child, stone)
+    enemy = _evaluate_for(child, opponent(stone))
+    return own - int(enemy * 1.12) + _center_bias(child, stone)
+
+
+def _v3_local_score_after_move(board: Board, row: int, col: int, stone: int) -> int:
+    if not board.is_empty_at(row, col):
+        return 0
+
+    score = 0
+    for row_step, col_step in DIRECTIONS:
+        line = _line_through_move(board, row, col, row_step, col_step, stone)
+        score += _score_line_v3(line, stone)
+    return score
+
+
+def _line_through_move(
+    board: Board,
+    row: int,
+    col: int,
+    row_step: int,
+    col_step: int,
+    stone: int,
+) -> list[int]:
+    line = []
+    radius = board.win_length + 1
+    other = opponent(stone)
+    for offset in range(-radius, radius + 1):
+        current_row = row + offset * row_step
+        current_col = col + offset * col_step
+        if offset == 0:
+            line.append(stone)
+        elif board.is_on_board(current_row, current_col):
+            line.append(board.grid[current_row][current_col])
+        else:
+            line.append(other)
+    return line
+
+
+def _is_v3_tactical_candidate(board: Board, row: int, col: int, stone: int) -> bool:
+    other = opponent(stone)
+    if _move_wins(board, row, col, stone) or _move_wins(board, row, col, other):
+        return True
+
+    own_score = _v3_local_score_after_move(board, row, col, stone)
+    block_score = _v3_local_score_after_move(board, row, col, other)
+    return own_score >= OPEN_FOUR or block_score >= OPEN_FOUR or own_score >= OPEN_THREE * 2
 
 
 def _count_line_side(
@@ -369,6 +561,13 @@ def _evaluate_for(board: Board, stone: int) -> int:
     return score
 
 
+def _evaluate_for_v3(board: Board, stone: int) -> int:
+    score = 0
+    for line in _lines(board):
+        score += _score_line_v3(line, stone)
+    return score
+
+
 def _score_line(line: list[int], stone: int) -> int:
     other = opponent(stone)
     score = 0
@@ -397,6 +596,52 @@ def _score_line(line: list[int], stone: int) -> int:
         elif own == 1 and empty == 4:
             score += SINGLE
     return score
+
+
+OPEN_FOUR_PATTERNS = (".XXXX.", ".XXX.X.", ".XX.XX.", ".X.XXX.")
+FOUR_PATTERNS = ("XXXX.", ".XXXX", "XXX.X", "XX.XX", "X.XXX")
+OPEN_THREE_PATTERNS = ("..XXX.", ".XXX..", ".XX.X.", ".X.XX.")
+THREE_PATTERNS = ("XXX..", "..XXX", "XX.X.", ".X.XX", "X.XX.", ".XX.X", "X.X.X")
+OPEN_TWO_PATTERNS = ("..XX.", ".XX..", ".X.X.")
+
+
+def _score_line_v3(line: list[int], stone: int) -> int:
+    text = _line_to_pattern(line, stone)
+    score = max(_score_line(line, stone), _count_pattern_occurrences(text, ("XXXXX",)) * WIN_SCORE)
+    score += _count_pattern_occurrences(text, OPEN_FOUR_PATTERNS) * OPEN_FOUR
+    score += _count_pattern_occurrences(text, FOUR_PATTERNS) * FOUR
+    score += _count_pattern_occurrences(text, OPEN_THREE_PATTERNS) * OPEN_THREE
+    score += _count_pattern_occurrences(text, THREE_PATTERNS) * THREE
+    score += _count_pattern_occurrences(text, OPEN_TWO_PATTERNS) * OPEN_TWO
+    return score
+
+
+def _line_to_pattern(line: list[int], stone: int) -> str:
+    other = opponent(stone)
+    chars = []
+    for value in line:
+        if value == stone:
+            chars.append("X")
+        elif value == EMPTY:
+            chars.append(".")
+        elif value == other:
+            chars.append("O")
+        else:
+            chars.append("O")
+    return "".join(chars)
+
+
+def _count_pattern_occurrences(text: str, patterns: tuple[str, ...]) -> int:
+    total = 0
+    for pattern in patterns:
+        start = 0
+        while True:
+            index = text.find(pattern, start)
+            if index == -1:
+                break
+            total += 1
+            start = index + 1
+    return total
 
 
 def _lines(board: Board) -> list[list[int]]:

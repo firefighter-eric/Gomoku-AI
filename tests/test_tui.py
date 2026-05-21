@@ -81,13 +81,32 @@ def test_settlement_menu_can_exit(monkeypatch):
     assert flushed == [True]
 
 
-def _make_game(window):
+def test_tui_settings_preserve_algorithm_choices():
+    game = _make_game(FakeWindow(), ai_algorithm="v0", black_algorithm="v0")
+
+    settings = game._settings()
+
+    assert settings.ai_algorithm == "v0"
+    assert settings.black_algorithm == "v0"
+    assert settings.white_algorithm == "v2"
+
+
+def _make_game(window, **overrides):
+    values = {
+        "ai_algorithm": "v2",
+        "black_algorithm": "v2",
+        "white_algorithm": "v2",
+    }
+    values.update(overrides)
     return _TuiGame(
         stdscr=window,
         mode="human-ai",
         size=5,
         human_stone=BLACK,
+        ai_algorithm=values["ai_algorithm"],
         depth=1,
+        black_algorithm=values["black_algorithm"],
+        white_algorithm=values["white_algorithm"],
         black_depth=1,
         white_depth=1,
         delay=0,

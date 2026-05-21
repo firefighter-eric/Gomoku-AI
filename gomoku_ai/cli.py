@@ -6,6 +6,7 @@ from typing import Callable
 
 from gomoku_ai.core import BLACK, DRAW, WHITE, Board, InvalidMoveError, STONE_NAMES, parse_move
 from gomoku_ai.game import GameResult, GameSession, GameSettings, format_move
+from gomoku_ai.players import ALGORITHM_NAMES, REGISTRY_NAME_CHOICES, resolve_algorithm_version
 
 InputFunc = Callable[[str], str]
 OutputFunc = Callable[..., None]
@@ -14,6 +15,7 @@ OutputFunc = Callable[..., None]
 def main(argv: list[str] | None = None) -> GameResult:
     parser = build_parser()
     args = parser.parse_args(argv)
+    normalize_algorithm_args(args)
 
     if args.mode is None:
         args = prompt_for_args(args)
@@ -25,7 +27,10 @@ def main(argv: list[str] | None = None) -> GameResult:
             mode=args.mode,
             size=args.size,
             human_stone=_stone_from_name(args.human),
+            ai_algorithm=args.ai,
             depth=args.depth,
+            black_algorithm=args.black_ai or args.ai,
+            white_algorithm=args.white_ai or args.ai,
             black_depth=args.black_depth or args.depth,
             white_depth=args.white_depth or args.depth,
             delay=args.delay,
@@ -38,7 +43,10 @@ def main(argv: list[str] | None = None) -> GameResult:
             mode=args.mode,
             size=args.size,
             human_stone=_stone_from_name(args.human),
+            ai_algorithm=args.ai,
             depth=args.depth,
+            black_algorithm=args.black_ai or args.ai,
+            white_algorithm=args.white_ai or args.ai,
             black_depth=args.black_depth or args.depth,
             white_depth=args.white_depth or args.depth,
             delay=args.delay,
@@ -49,12 +57,15 @@ def main(argv: list[str] | None = None) -> GameResult:
         return play_human_ai(
             size=args.size,
             human_stone=_stone_from_name(args.human),
+            ai_algorithm=args.ai,
             depth=args.depth,
             max_moves=args.max_moves,
         )
     if args.mode == "ai-ai":
         return play_ai_ai(
             size=args.size,
+            black_algorithm=args.black_ai or args.ai,
+            white_algorithm=args.white_ai or args.ai,
             black_depth=args.black_depth or args.depth,
             white_depth=args.white_depth or args.depth,
             delay=args.delay,
@@ -74,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tui", action="store_const", const="tui", dest="ui", help="Shortcut for --ui tui.")
     parser.add_argument("--gui", action="store_const", const="gui", dest="ui", help="Shortcut for --ui gui.")
     parser.add_argument("--human", choices=("black", "white"), default="black")
+    parser.add_argument("--ai", default="alpha-beta", help=f"AI registry name, one of {', '.join(REGISTRY_NAME_CHOICES)}.")
+    parser.add_argument("--ai-version", choices=ALGORITHM_NAMES, help="AI version, one of v0, v1, v2, v3.")
+    parser.add_argument("--black-ai", help="Black AI registry name for AI-vs-AI.")
+    parser.add_argument("--black-version", choices=ALGORITHM_NAMES, help="Black AI version for AI-vs-AI.")
+    parser.add_argument("--white-ai", help="White AI registry name for AI-vs-AI.")
+    parser.add_argument("--white-version", choices=ALGORITHM_NAMES, help="White AI version for AI-vs-AI.")
     parser.add_argument("--depth", type=int, default=4)
     parser.add_argument("--black-depth", type=int)
     parser.add_argument("--white-depth", type=int)
@@ -81,6 +98,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--max-moves", type=int)
     return parser
+
+
+def normalize_algorithm_args(args: argparse.Namespace) -> argparse.Namespace:
+    ai_registry = args.ai
+    ai_version = args.ai_version
+    args.ai = resolve_algorithm_version(ai_registry, ai_version)
+    args.black_ai = resolve_algorithm_version(
+        args.black_ai or ai_registry,
+        args.black_version or ai_version,
+    )
+    args.white_ai = resolve_algorithm_version(
+        args.white_ai or ai_registry,
+        args.white_version or ai_version,
+    )
+    return args
 
 
 def prompt_for_args(args: argparse.Namespace, input_func: InputFunc = input) -> argparse.Namespace:
@@ -102,6 +134,7 @@ def play_human_ai(
     *,
     size: int = 15,
     human_stone: int = BLACK,
+    ai_algorithm: str = "v2",
     depth: int = 4,
     max_moves: int | None = None,
     input_func: InputFunc = input,
@@ -112,6 +145,7 @@ def play_human_ai(
             mode="human-ai",
             size=size,
             human_stone=human_stone,
+            ai_algorithm=ai_algorithm,
             depth=depth,
             black_depth=depth,
             white_depth=depth,
@@ -150,6 +184,8 @@ def play_human_ai(
 def play_ai_ai(
     *,
     size: int = 15,
+    black_algorithm: str = "v2",
+    white_algorithm: str = "v2",
     black_depth: int = 4,
     white_depth: int = 4,
     delay: float = 0.0,
@@ -160,6 +196,8 @@ def play_ai_ai(
         GameSettings(
             mode="ai-ai",
             size=size,
+            black_algorithm=black_algorithm,
+            white_algorithm=white_algorithm,
             black_depth=black_depth,
             white_depth=white_depth,
             max_moves=max_moves,

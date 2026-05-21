@@ -4,8 +4,8 @@ import time
 from dataclasses import dataclass, replace
 from typing import Callable
 
-from gomoku_ai.ai import AlphaBetaAI
 from gomoku_ai.core import BLACK, DRAW, WHITE, Board, InvalidMoveError, STONE_NAMES, opponent
+from gomoku_ai.players import GomokuPlayer, PlayerSpec, create_player
 
 Clock = Callable[[], float]
 
@@ -18,6 +18,9 @@ class GameSettings:
     mode: str = "human-ai"
     size: int = 15
     human_stone: int = BLACK
+    ai_algorithm: str = "v2"
+    black_algorithm: str = "v2"
+    white_algorithm: str = "v2"
     depth: int = 4
     black_depth: int = 4
     white_depth: int = 4
@@ -115,15 +118,27 @@ class GameSession:
             return self._already_finished()
         return self._finish(winner, resigned=resigned)
 
-    def _create_players(self) -> dict[int, AlphaBetaAI]:
+    def _create_players(self) -> dict[int, GomokuPlayer]:
         if self.settings.mode == "ai-ai":
             return {
-                BLACK: AlphaBetaAI(BLACK, depth=self.settings.black_depth),
-                WHITE: AlphaBetaAI(WHITE, depth=self.settings.white_depth),
+                BLACK: create_player(
+                    BLACK,
+                    PlayerSpec(self.settings.black_algorithm, depth=self.settings.black_depth),
+                ),
+                WHITE: create_player(
+                    WHITE,
+                    PlayerSpec(self.settings.white_algorithm, depth=self.settings.white_depth),
+                ),
             }
         return {
-            BLACK: AlphaBetaAI(BLACK, depth=self.settings.depth),
-            WHITE: AlphaBetaAI(WHITE, depth=self.settings.depth),
+            BLACK: create_player(
+                BLACK,
+                PlayerSpec(self.settings.ai_algorithm, depth=self.settings.depth),
+            ),
+            WHITE: create_player(
+                WHITE,
+                PlayerSpec(self.settings.ai_algorithm, depth=self.settings.depth),
+            ),
         }
 
     def _place_current(self, row: int, col: int) -> TurnOutcome:
