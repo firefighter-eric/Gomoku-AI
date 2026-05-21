@@ -1,7 +1,7 @@
 import pygame
 
 from gomoku_ai.core import BLACK, WHITE
-from gomoku_ai.game import GameResult, GameSettings
+from gomoku_ai.game import MAX_UI_DEPTH, GameResult, GameSettings
 from gomoku_ai.gui import (
     adjusted_settings,
     board_to_pixel,
@@ -74,14 +74,17 @@ def test_adjusted_settings_clamps_depth_and_toggles_side():
     assert adjusted_settings(settings, "depth_inc").depth == 2
     assert adjusted_settings(settings, "side_toggle").human_stone == WHITE
 
+    high_settings = GameSettings(mode="human-ai", size=15, human_stone=BLACK, depth=MAX_UI_DEPTH)
+    assert adjusted_settings(high_settings, "depth_inc").depth == MAX_UI_DEPTH
+
 
 def test_adjusted_ai_ai_settings_are_independent():
-    settings = GameSettings(mode="ai-ai", size=15, black_depth=5, white_depth=1)
+    settings = GameSettings(mode="ai-ai", size=15, black_depth=MAX_UI_DEPTH, white_depth=1)
 
     adjusted = adjusted_settings(settings, "black_depth_inc")
     adjusted = adjusted_settings(adjusted, "white_depth_dec")
 
-    assert adjusted.black_depth == 5
+    assert adjusted.black_depth == MAX_UI_DEPTH
     assert adjusted.white_depth == 1
 
 

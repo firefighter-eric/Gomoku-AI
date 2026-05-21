@@ -9,6 +9,9 @@ from gomoku_ai.core import BLACK, DRAW, WHITE, Board, InvalidMoveError, STONE_NA
 
 Clock = Callable[[], float]
 
+MIN_UI_DEPTH = 1
+MAX_UI_DEPTH = 10
+
 
 @dataclass(frozen=True)
 class GameSettings:

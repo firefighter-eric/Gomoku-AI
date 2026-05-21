@@ -9,7 +9,16 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame
 
 from gomoku_ai.core import BLACK, EMPTY, STONE_NAMES, opponent
-from gomoku_ai.game import GameResult, GameSession, GameSettings, TurnOutcome, column_label, result_message
+from gomoku_ai.game import (
+    MAX_UI_DEPTH,
+    MIN_UI_DEPTH,
+    GameResult,
+    GameSession,
+    GameSettings,
+    TurnOutcome,
+    column_label,
+    result_message,
+)
 
 BACKGROUND = (238, 235, 226)
 BOARD_FILL = (214, 169, 96)
@@ -418,4 +427,4 @@ class PygameGomoku:
 
 
 def _clamp_depth(depth: int) -> int:
-    return min(max(depth, 1), 5)
+    return min(max(depth, MIN_UI_DEPTH), MAX_UI_DEPTH)

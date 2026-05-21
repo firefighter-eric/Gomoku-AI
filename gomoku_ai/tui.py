@@ -4,7 +4,16 @@ import curses
 from dataclasses import dataclass
 
 from gomoku_ai.core import BLACK, EMPTY, STONE_LABELS, STONE_NAMES, opponent
-from gomoku_ai.game import GameResult, GameSession, GameSettings, column_label, format_move, result_message
+from gomoku_ai.game import (
+    MAX_UI_DEPTH,
+    MIN_UI_DEPTH,
+    GameResult,
+    GameSession,
+    GameSettings,
+    column_label,
+    format_move,
+    result_message,
+)
 
 
 @dataclass(frozen=True)
@@ -381,4 +390,4 @@ def _column_label(index: int) -> str:
 
 
 def _clamp_depth(depth: int) -> int:
-    return min(max(depth, 1), 5)
+    return min(max(depth, MIN_UI_DEPTH), MAX_UI_DEPTH)

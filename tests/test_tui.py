@@ -1,7 +1,7 @@
 import curses
 
 from gomoku_ai.core import BLACK, WHITE
-from gomoku_ai.game import GameResult
+from gomoku_ai.game import MAX_UI_DEPTH, GameResult
 from gomoku_ai.tui import BoardGeometry, _TuiGame, board_to_screen, screen_to_board
 
 
@@ -55,6 +55,18 @@ def test_settlement_menu_can_update_settings_and_restart(monkeypatch):
     assert flushed == [True]
     assert -1 in window.timeouts
     assert window.getch_calls == 5
+
+
+def test_settlement_menu_clamps_depth_to_ten(monkeypatch):
+    keys = [curses.KEY_RIGHT] * 20 + [curses.KEY_DOWN, curses.KEY_DOWN, ord("\n")]
+    window = FakeWindow(keys=keys)
+    monkeypatch.setattr(curses, "flushinp", lambda: None)
+
+    game = _make_game(window)
+    restart = game._settlement_menu(GameResult(winner=BLACK, moves=1, elapsed=0.1))
+
+    assert restart is True
+    assert game.depth == MAX_UI_DEPTH
 
 
 def test_settlement_menu_can_exit(monkeypatch):
