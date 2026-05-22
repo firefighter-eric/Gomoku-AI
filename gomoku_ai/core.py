@@ -32,6 +32,14 @@ class Move:
     col: int
 
 
+@dataclass(frozen=True)
+class MoveUndo:
+    row: int
+    col: int
+    stone: int
+    previous_last_move: tuple[int, int] | None
+
+
 class Board:
     """Mutable Gomoku board using zero-based row and column indexes."""
 
@@ -93,6 +101,34 @@ class Board:
         board = self.copy()
         board.play(row, col, stone)
         return board
+
+    def make_move(self, row: int, col: int, stone: int) -> MoveUndo:
+        """Place a stone and return the data needed to undo it."""
+
+        previous_last_move = self.last_move
+        self.play(row, col, stone)
+        return MoveUndo(
+            row=row,
+            col=col,
+            stone=stone,
+            previous_last_move=previous_last_move,
+        )
+
+    def undo_move(self, undo: MoveUndo) -> Board:
+        """Undo the most recent move produced by make_move."""
+
+        if not self.is_on_board(undo.row, undo.col):
+            raise InvalidMoveError(f"move is outside the board: ({undo.row}, {undo.col})")
+        if self.last_move != (undo.row, undo.col):
+            raise InvalidMoveError("can only undo the most recent move")
+        if self.grid[undo.row][undo.col] != undo.stone:
+            raise InvalidMoveError(
+                f"point does not contain the expected stone: ({undo.row}, {undo.col})"
+            )
+
+        self.grid[undo.row][undo.col] = EMPTY
+        self.last_move = undo.previous_last_move
+        return self
 
     def is_on_board(self, row: int, col: int) -> bool:
         return 0 <= row < self.size and 0 <= col < self.size

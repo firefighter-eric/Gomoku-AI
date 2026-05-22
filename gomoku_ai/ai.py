@@ -89,6 +89,13 @@ class ZobristHasher:
                 value ^= self.white[row][col]
         return value
 
+    def update_hash(self, value: int, row: int, col: int, stone: int) -> int:
+        if stone == BLACK:
+            return value ^ self.black[row][col]
+        if stone == WHITE:
+            return value ^ self.white[row][col]
+        raise ValueError(f"invalid stone: {stone!r}")
+
 
 class AlphaBetaAI:
     """Alpha-beta Gomoku AI with heuristic move ordering and Zobrist caches."""
@@ -426,6 +433,135 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
 
     name = "v4"
 
+    def choose_move(self, board: Board) -> tuple[int, int]:
+        if board.is_empty():
+            center = board.size // 2
+            return center, center
+
+        winning_move = find_immediate_win(board, self.stone, self.candidate_radius)
+        if winning_move is not None:
+            return winning_move
+
+        blocking_move = find_immediate_win(board, opponent(self.stone), self.candidate_radius)
+        if blocking_move is not None:
+            return blocking_move
+
+        self._ensure_hasher(board.size)
+        self.stats = SearchStats()
+        board_hash = self._hash(board)
+        candidates = self._ordered_candidates(board, self.stone, limit=self.candidate_limit)
+        best_move = candidates[0]
+        best_value = -inf
+        alpha = -inf
+        beta = inf
+
+        for row, col in candidates:
+            undo = board.make_move(row, col, self.stone)
+            child_hash = self._hash_after_move(board_hash, row, col, self.stone)
+            try:
+                value = self._alpha_beta_v4(
+                    board,
+                    depth=self.depth - 1,
+                    alpha=alpha,
+                    beta=beta,
+                    current_stone=opponent(self.stone),
+                    last_move=(row, col),
+                    board_hash=child_hash,
+                )
+            finally:
+                board.undo_move(undo)
+            if value > best_value:
+                best_value = value
+                best_move = (row, col)
+            alpha = max(alpha, best_value)
+
+        return best_move
+
+    def _alpha_beta_v4(
+        self,
+        board: Board,
+        depth: int,
+        alpha: float,
+        beta: float,
+        current_stone: int,
+        last_move: tuple[int, int] | None,
+        board_hash: int,
+    ) -> int:
+        self.stats.nodes += 1
+
+        terminal = board.winner_from(*last_move) if last_move is not None else board.winner()
+        if terminal == self.stone:
+            return WIN_SCORE + depth
+        if terminal == opponent(self.stone):
+            return -WIN_SCORE - depth
+        if terminal == DRAW:
+            return 0
+        if depth <= 0:
+            return self._evaluate_with_hash(board, board_hash)
+
+        key = (board_hash, depth, current_stone)
+        if key in self._search_cache:
+            self.stats.cache_hits += 1
+            return self._search_cache[key]
+
+        maximizing = current_stone == self.stone
+        candidates = self._ordered_candidates(
+            board,
+            current_stone,
+            limit=self._candidate_limit_for_depth(depth),
+        )
+        cutoff = False
+
+        if maximizing:
+            value = -inf
+            for row, col in candidates:
+                undo = board.make_move(row, col, current_stone)
+                child_hash = self._hash_after_move(board_hash, row, col, current_stone)
+                try:
+                    child_value = self._alpha_beta_v4(
+                        board,
+                        depth - 1,
+                        alpha,
+                        beta,
+                        opponent(current_stone),
+                        (row, col),
+                        child_hash,
+                    )
+                finally:
+                    board.undo_move(undo)
+                value = max(value, child_value)
+                alpha = max(alpha, value)
+                if beta <= alpha:
+                    cutoff = True
+                    break
+        else:
+            value = inf
+            for row, col in candidates:
+                undo = board.make_move(row, col, current_stone)
+                child_hash = self._hash_after_move(board_hash, row, col, current_stone)
+                try:
+                    child_value = self._alpha_beta_v4(
+                        board,
+                        depth - 1,
+                        alpha,
+                        beta,
+                        opponent(current_stone),
+                        (row, col),
+                        child_hash,
+                    )
+                finally:
+                    board.undo_move(undo)
+                value = min(value, child_value)
+                beta = min(beta, value)
+                if beta <= alpha:
+                    cutoff = True
+                    break
+
+        result = int(value)
+        if not cutoff:
+            self._search_cache[key] = result
+        return result
+
     def _ordered_candidates(
         self,
         board: Board,
@@ -455,7 +591,10 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         return _v4_candidate_analysis(board, row, col, stone).score
 
     def _evaluate(self, board: Board) -> int:
-        key = self._hash(board)
+        return self._evaluate_with_hash(board, self._hash(board))
+
+    def _evaluate_with_hash(self, board: Board, board_hash: int) -> int:
+        key = board_hash
         if key in self._eval_cache:
             self.stats.cache_hits += 1
             return self._eval_cache[key]
@@ -465,6 +604,10 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         score = own - int(enemy * 1.16) + _center_bias(board, self.stone)
         self._eval_cache[key] = score
         return score
+
+    def _hash_after_move(self, board_hash: int, row: int, col: int, stone: int) -> int:
+        assert self._hasher is not None
+        return self._hasher.update_hash(board_hash, row, col, stone)
 
 
 def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, int]]:

@@ -71,3 +71,27 @@ def test_render_marks_last_move_lowercase():
     board.play(2, 2, BLACK)
 
     assert " x" in board.render()
+
+
+def test_make_and_undo_move_restores_board_state():
+    board = Board(size=5)
+    board.play(1, 1, BLACK)
+    undo = board.make_move(2, 2, WHITE)
+
+    assert board.grid[2][2] == WHITE
+    assert board.last_move == (2, 2)
+
+    board.undo_move(undo)
+
+    assert board.grid[2][2] == 0
+    assert board.last_move == (1, 1)
+    assert board.move_count == 1
+
+
+def test_undo_requires_most_recent_move():
+    board = Board(size=5)
+    first = board.make_move(1, 1, BLACK)
+    board.make_move(2, 2, WHITE)
+
+    with pytest.raises(InvalidMoveError):
+        board.undo_move(first)

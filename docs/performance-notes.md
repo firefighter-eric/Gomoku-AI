@@ -54,12 +54,35 @@ uv run pytest
 uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2 --jobs 2
 ```
 
+## 2026-05-23 v4 make/undo 与增量 Zobrist
+
+背景：
+
+- `alpha-beta:v4` 之前继承了基础 alpha-beta 搜索框架，递归里每个子节点都通过 `Board.with_move(...)` 复制整张棋盘。
+- `_hash(board)` 每次计算 Zobrist key 时都会扫描当前棋盘石子，搜索节点越多，重复扫描越明显。
+- 本轮按版本边界只优化 `v4`，`v1`、`v2`、`v3` 仍保留原有搜索框架，方便做历史版本对比。
+
+改动：
+
+- `Board` 新增 `make_move(...)` 和 `undo_move(...)`，落子时返回可恢复记录，撤子时恢复原格点和上一手 `last_move`。
+- `ZobristHasher` 新增 `update_hash(...)`，通过单个落子的随机数异或完成增量更新。
+- `AlphaBetaV4AI` 新增 v4 专用递归路径，搜索时原地落子、递归传递当前 hash，并在 `finally` 中撤子，保证调用 `choose_move(...)` 后外部棋盘状态不变。
+
+验证：
+
+- `tests/test_core.py` 覆盖 make/undo 恢复棋盘、恢复 `last_move` 和禁止非栈顶撤子。
+- `tests/test_ai.py` 覆盖增量 Zobrist 与全盘 hash 一致，以及在 `Board.copy()` 被替换成抛错时 `alpha-beta:v4` 仍可完成搜索并保持原棋盘不变。
+
+验证命令：
+
+```bash
+uv run pytest tests/test_core.py tests/test_ai.py
+```
+
 ## 后续加速方向
 
 仍然值得继续优化的热路径：
 
-- `Board.with_move()` 每个搜索节点都会复制棋盘；可以改为 make/undo 落子，减少内存分配。
-- Zobrist hash 目前通过 `_hash(board)` 扫描棋盘石子；可以改为增量 hash。
 - 置换表目前只缓存未剪枝结果；可以记录 exact、lower bound、upper bound 和最佳着法。
 - 候选点仍按当前局面从已有棋子邻域生成；可以维护增量 frontier。
 - `v4` 全局评估仍会扫描所有行、列和对角线；后续可考虑增量局部评估。

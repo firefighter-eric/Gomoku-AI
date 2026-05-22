@@ -6,6 +6,7 @@ from gomoku_ai.ai import (
     AlphaBetaV1AI,
     AlphaBetaV3AI,
     AlphaBetaV4AI,
+    ZobristHasher,
     find_immediate_win_by_simulation,
     generate_candidate_moves,
     _move_wins,
@@ -195,3 +196,40 @@ def test_v4_keeps_v3_tactical_candidate_guards():
     assert any(move in moves for move in {(5, 2), (5, 7)})
     assert (7, 7) in moves
     assert _v4_threats_after_move(board, 7, 7, WHITE).has_double_three
+
+
+def test_zobrist_incremental_update_matches_full_hash():
+    board = Board(size=15)
+    hasher = ZobristHasher(size=15)
+    board_hash = hasher.hash_board(board)
+
+    undo = board.make_move(7, 7, BLACK)
+    board_hash = hasher.update_hash(board_hash, 7, 7, BLACK)
+
+    assert board_hash == hasher.hash_board(board)
+
+    board.undo_move(undo)
+    board_hash = hasher.update_hash(board_hash, 7, 7, BLACK)
+
+    assert board_hash == hasher.hash_board(board)
+
+
+def test_v4_search_does_not_copy_board(monkeypatch):
+    board = Board(size=9)
+    board.play(4, 4, BLACK)
+    board.play(3, 3, WHITE)
+    board.play(4, 5, BLACK)
+    board.play(3, 5, WHITE)
+    grid = [row[:] for row in board.grid]
+    last_move = board.last_move
+
+    def fail_copy(self):
+        raise AssertionError("v4 search should use make/undo instead of Board.copy")
+
+    monkeypatch.setattr(Board, "copy", fail_copy)
+    ai = AlphaBetaV4AI(BLACK, depth=2, candidate_limit=4)
+    move = ai.choose_move(board)
+
+    assert board.grid == grid
+    assert board.last_move == last_move
+    assert board.is_empty_at(*move)
