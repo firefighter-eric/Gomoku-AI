@@ -137,6 +137,8 @@ Average moves: 19.0
 - 搜索深度：`alpha-beta` 版本统一使用 depth 5
 - 范围：只记录 `alpha-beta:v2`、`alpha-beta:v3` 对 `alpha-beta:v1`；`random:v0` 不纳入本轮正式记录
 
+注意：本节记录的是 `alpha-beta:v3` 增加双三、四三、双四显式加权之前的结果。该增强之后需要重新跑同深度基线赛，才能代表当前 `v3` 的水平。
+
 汇总：
 
 | 对比组 | 待测版本胜局 | `alpha-beta:v1` 胜局 | 平局 | 停止 | 平均手数 | 墙钟耗时 | 结论 |

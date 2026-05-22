@@ -70,8 +70,8 @@ def test_build_buttons_switches_to_settlement_controls_after_result():
         for button in build_buttons(settings, GameResult(winner=BLACK, moves=5, elapsed=0.1), layout)
     ]
 
-    assert live_actions == ["resign", "restart", "exit"]
-    assert settlement_actions == ["depth_dec", "depth_inc", "side_toggle", "restart", "exit"]
+    assert live_actions == ["mode_toggle", "resign", "restart", "exit"]
+    assert settlement_actions == ["mode_toggle", "depth_dec", "depth_inc", "side_toggle", "restart", "exit"]
 
 
 def test_build_dropdowns_exposes_algorithm_selectors_after_result():
@@ -121,6 +121,35 @@ def test_adjusted_ai_ai_settings_are_independent():
 
     assert adjusted.black_depth == MAX_UI_DEPTH
     assert adjusted.white_depth == 1
+
+
+def test_adjusted_settings_toggles_between_human_and_ai_ai_modes():
+    human_settings = GameSettings(mode="human-ai", size=15, human_stone=BLACK, ai_algorithm="v3", depth=6)
+
+    ai_settings = adjusted_settings(human_settings, "mode_toggle")
+
+    assert ai_settings.mode == "ai-ai"
+    assert ai_settings.black_algorithm == "v3"
+    assert ai_settings.white_algorithm == "v3"
+    assert ai_settings.black_depth == 6
+    assert ai_settings.white_depth == 6
+
+    human_settings = adjusted_settings(
+        GameSettings(
+            mode="ai-ai",
+            size=15,
+            human_stone=BLACK,
+            black_algorithm="v3",
+            white_algorithm="v1",
+            black_depth=5,
+            white_depth=2,
+        ),
+        "mode_toggle",
+    )
+
+    assert human_settings.mode == "human-ai"
+    assert human_settings.ai_algorithm == "v1"
+    assert human_settings.depth == 2
 
 
 def test_random_algorithm_disables_depth_controls():
@@ -207,6 +236,27 @@ def test_dropdown_click_selects_algorithm(monkeypatch):
 
         assert game.open_dropdown is None
         assert game.settings.ai_algorithm == "v3"
+    finally:
+        pygame.quit()
+
+
+def test_gui_mode_toggle_click_restarts_live_game_as_ai_ai(monkeypatch):
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    game = PygameGomoku(settings=GameSettings(mode="human-ai", size=5, human_stone=BLACK, ai_algorithm="v3", depth=2))
+    try:
+        game.session.board.play(2, 2, BLACK)
+        button = next(button for button in game._buttons() if button.action == "mode_toggle")
+        x, y, width, height = button.rect
+
+        game._handle_click(x + width // 2, y + height // 2)
+
+        assert game.settings.mode == "ai-ai"
+        assert game.session.settings.mode == "ai-ai"
+        assert game.session.board.move_count == 0
+        assert game.session.is_ai_turn()
+        assert game.settings.black_algorithm == "v3"
+        assert game.settings.white_algorithm == "v3"
+        assert game.message == "New game started."
     finally:
         pygame.quit()
 

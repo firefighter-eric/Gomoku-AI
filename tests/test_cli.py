@@ -69,7 +69,7 @@ def test_default_depth_is_four():
     args = normalize_algorithm_args(build_parser().parse_args(["--mode", "human-ai"]))
 
     assert args.depth == 4
-    assert args.ai == "v2"
+    assert args.ai == "v3"
 
 
 def test_algorithm_options_are_available():
@@ -135,7 +135,7 @@ def test_version_options_can_override_shared_registry():
         )
     )
 
-    assert args.ai == "v2"
+    assert args.ai == "v3"
     assert args.black_ai == "v1"
     assert args.white_ai == "v3"
 

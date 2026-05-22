@@ -41,6 +41,7 @@ PANEL_GAP = 28
 PANEL_INSET = 20
 PANEL_TITLE_TOP = 58
 DROPDOWN_ROW_HEIGHT = 30
+SETTINGS_DROPDOWN_GAP = 28
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,8 @@ def build_buttons(
     row = 40
 
     if result is None:
+        buttons.append(Button("mode_toggle", mode_toggle_label(settings), (x, y, width, 32)))
+        y += row
         if settings.mode == "human-ai":
             buttons.append(Button("resign", "Resign", (x, y, width, 32)))
         else:
@@ -182,6 +185,9 @@ def build_buttons(
         y += row
         buttons.append(Button("exit", "Exit", (x, y, width, 32)))
         return buttons
+
+    buttons.append(Button("mode_toggle", mode_toggle_label(settings), (x, y, width, 32)))
+    y += row
 
     if settings.mode == "human-ai":
         buttons.extend(
@@ -239,6 +245,10 @@ def build_buttons(
     return buttons
 
 
+def mode_toggle_label(settings: GameSettings) -> str:
+    return "AI vs AI" if settings.mode == "human-ai" else "Human vs AI"
+
+
 def build_dropdowns(
     settings: GameSettings,
     result: GameResult | None,
@@ -276,7 +286,25 @@ def adjusted_settings(settings: GameSettings, action: str) -> GameSettings:
         return replace(settings, white_depth=_clamp_depth(settings.white_depth + 1))
     if action == "side_toggle":
         return replace(settings, human_stone=opponent(settings.human_stone))
+    if action == "mode_toggle":
+        return toggled_mode_settings(settings)
     return settings
+
+
+def toggled_mode_settings(settings: GameSettings) -> GameSettings:
+    if settings.mode == "human-ai":
+        return replace(
+            settings,
+            mode="ai-ai",
+            black_algorithm=settings.ai_algorithm,
+            white_algorithm=settings.ai_algorithm,
+            black_depth=settings.depth,
+            white_depth=settings.depth,
+        )
+
+    ai_algorithm = settings.white_algorithm if settings.human_stone == BLACK else settings.black_algorithm
+    depth = settings.white_depth if settings.human_stone == BLACK else settings.black_depth
+    return replace(settings, mode="human-ai", ai_algorithm=ai_algorithm, depth=depth)
 
 
 def settings_lines(settings: GameSettings) -> list[str]:
@@ -303,7 +331,17 @@ def panel_buttons_top(
 
 
 def panel_dropdowns_top(settings: GameSettings, status_line_count: int) -> int:
-    return PANEL_TITLE_TOP + 48 + 28 + 28 + 36 + status_line_count * 22 + 12 + len(settings_lines(settings)) * 28 + 10
+    return (
+        PANEL_TITLE_TOP
+        + 48
+        + 28
+        + 28
+        + 36
+        + status_line_count * 22
+        + 12
+        + len(settings_lines(settings)) * 28
+        + SETTINGS_DROPDOWN_GAP
+    )
 
 
 def algorithm_label(algorithm: str) -> str:
@@ -335,10 +373,10 @@ def play_gui(
     mode: str,
     size: int = 15,
     human_stone: int = BLACK,
-    ai_algorithm: str = "v2",
+    ai_algorithm: str = "v3",
     depth: int = 4,
-    black_algorithm: str = "v2",
-    white_algorithm: str = "v2",
+    black_algorithm: str = "v3",
+    white_algorithm: str = "v3",
     black_depth: int = 4,
     white_depth: int = 4,
     delay: float = 0.0,
@@ -449,6 +487,17 @@ class PygameGomoku:
             self._apply_outcome(self.session.stop())
             return
 
+        if action == "mode_toggle":
+            self.settings = adjusted_settings(self.settings, action)
+            self.open_dropdown = None
+            if self.session.result is None:
+                self.session.restart(self.settings)
+                self.message = "New game started."
+                self.last_ai_time = 0.0
+            else:
+                self.message = "Settings updated. Press Restart."
+            return
+
         if self.session.result is not None:
             self.settings = adjusted_settings(self.settings, action)
             self.message = "Settings updated. Press Restart."
@@ -539,8 +588,9 @@ class PygameGomoku:
         for dropdown in self._dropdowns():
             self._draw_dropdown(dropdown, expanded=False)
 
+        buttons = self._buttons()
         if self.open_dropdown is None:
-            for button in self._buttons():
+            for button in buttons:
                 self._draw_button(button)
 
         if self.open_dropdown is not None:
@@ -548,7 +598,10 @@ class PygameGomoku:
             if dropdown is not None:
                 self._draw_dropdown(dropdown, expanded=True)
 
-        if self.session.result is not None:
+        if self.session.result is not None and self.open_dropdown is None:
+            button_bottom = max((button.rect[1] + button.rect[3] for button in buttons), default=0)
+            if button_bottom + 56 > panel_rect.bottom:
+                return
             self._draw_text("Settlement", (self.layout.panel_left, panel_rect.bottom - 60), self.font, ACCENT_DARK)
             self._draw_text("Adjust settings, then restart.", (self.layout.panel_left, panel_rect.bottom - 32), self.small_font, MUTED)
 
@@ -566,9 +619,8 @@ class PygameGomoku:
         fill = BUTTON if dropdown.enabled else DISABLED
         pygame.draw.rect(self.screen, fill, label_rect, border_radius=5)
         pygame.draw.rect(self.screen, BUTTON_BORDER, label_rect, width=1, border_radius=5)
-        self._draw_text(dropdown.label, (label_rect.left, label_rect.top - 22), self.small_font, MUTED)
 
-        selected = algorithm_label(dropdown.value)
+        selected = f"{dropdown.label}: {algorithm_label(dropdown.value)}"
         surface = self.font.render(selected, True, TEXT if dropdown.enabled else MUTED)
         self.screen.blit(surface, (label_rect.left + 12, label_rect.top + 6))
         arrow = "v" if not expanded else "^"

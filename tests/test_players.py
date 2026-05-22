@@ -18,7 +18,7 @@ def test_create_player_uses_player_spec():
 def test_create_player_accepts_alphabeta_alias():
     player = create_player(BLACK, PlayerSpec("alpha-beta", depth=1))
 
-    assert player.name == "v2"
+    assert player.name == "v3"
 
 
 def test_create_player_accepts_v1_alias():
@@ -65,5 +65,5 @@ def test_player_spec_exposes_registry_name_and_version():
 def test_legacy_algorithm_names_are_aliases():
     assert PlayerSpec("random").normalized_algorithm == "v0"
     assert PlayerSpec("alphabeta-v1").normalized_algorithm == "v1"
-    assert PlayerSpec("alphabeta").normalized_algorithm == "v2"
+    assert PlayerSpec("alphabeta").normalized_algorithm == "v3"
     assert PlayerSpec("alphabeta-v3").normalized_algorithm == "v3"

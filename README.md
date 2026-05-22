@@ -11,7 +11,7 @@
 - 支持两个 AI 自动对战。
 - 支持普通命令行坐标输入。
 - 支持 TUI 模式：方向键选格、回车/空格落子、终端支持时可鼠标点击落子。
-- 支持 Pygame GUI 模式：鼠标点击棋盘落子，右侧面板显示状态、难度、黑白和结算操作。
+- 支持 Pygame GUI 模式：鼠标点击棋盘落子，右侧面板显示状态、模式、难度、黑白和结算操作。
 - 对局结束后在 TUI 结算界面中可以调整难度、切换黑白、重新开始或退出。
 - 对局结束后在 GUI 结算界面中可以调整难度、切换黑白、重新开始或退出。
 - AI 使用启发式评分、候选点裁剪、Zobrist 缓存和 alpha-beta 搜索。
@@ -109,12 +109,13 @@ GUI 对局中的操作：
 
 - 鼠标点击棋盘交叉点：落子。
 - `Esc` 或 `q`：退出窗口。
+- `AI vs AI` / `Human vs AI`：切换人机对战和 AI 对 AI。对局中点击会直接按新模式重开，结算界面中点击后再按 `Restart` 生效。
 - `Resign`：人机模式下认输。
 - `Stop`：AI 对 AI 模式下停止当前对局。
 - `Restart`：按当前设置重新开始。
 - `Exit`：退出窗口。
 
-GUI 结算界面会停留在最后局面。此时可以通过下拉框切换算法版本、调整人机难度（1 到 10）、切换黑白，或分别调整 AI 对 AI 的黑白双方算法和搜索深度（1 到 10），然后点击 `Restart` 开始新对局。当前 GUI 可切换 `random:v0`、`alpha-beta:v1`、`alpha-beta:v2` 和 `alpha-beta:v3`；`random:v0` 不使用搜索深度。
+GUI 结算界面会停留在最后局面。此时可以切换人机对战和 AI 对 AI，通过下拉框切换算法版本、调整人机难度（1 到 10）、切换黑白，或分别调整 AI 对 AI 的黑白双方算法和搜索深度（1 到 10），然后点击 `Restart` 开始新对局。当前 GUI 可切换 `random:v0`、`alpha-beta:v1`、`alpha-beta:v2` 和 `alpha-beta:v3`；`random:v0` 不使用搜索深度。
 
 ## AI 对 AI
 
@@ -158,8 +159,8 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 
 - `random:v0`：随机基线，主要用于测试和强弱对比。
 - `alpha-beta:v1`：第一版 alpha-beta，保留“复制棋盘 + 全盘评分”的候选排序和模拟落子胜负判断，用作历史对照。
-- `alpha-beta:v2`：第二版 alpha-beta，也是当前默认算法，实现局部候选排序、快速一步必胜/防守判断、深层候选收窄和 Zobrist 缓存。
-- `alpha-beta:v3`：第三版 alpha-beta，在第二版基础上加强棋型评分，识别活四、冲四、跳四、活三等模式，并在候选裁剪时保留关键战术点。
+- `alpha-beta:v2`：第二版 alpha-beta，实现局部候选排序、快速一步必胜/防守判断、深层候选收窄和 Zobrist 缓存。
+- `alpha-beta:v3`：第三版 alpha-beta，也是当前默认算法，在第二版基础上加强棋型评分，识别活四、冲四、跳四、活三等模式；当前还对双四、四三、双三做显式加权，并在候选裁剪时保留进攻和防守两侧的关键战术点。
 
 运行批量对比：
 
@@ -169,7 +170,7 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 
 正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比固定 8 场，并默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-最新 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；完整明细和耗时见 [docs/evaluation-results.md](docs/evaluation-results.md)。
+上一轮 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；该结果记录于 `v3` 增强双三/四三/双四显式加权之前，完整明细和耗时见 [docs/evaluation-results.md](docs/evaluation-results.md)。
 
 对比第一版和第二版：
 
@@ -194,7 +195,7 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 - `random:v0`：随机基线，不做搜索，只用于测试和胜率参照。
 - `alpha-beta:v1`：第一版。参考 `firefighter-eric/TicTacToe-AI` 的思路，建立棋盘状态、胜负检测、启发式评分、Zobrist 缓存、邻域候选点生成和 alpha-beta 搜索的基础结构，并保留较慢的“复制棋盘 + 全盘评分”候选排序。
 - `alpha-beta:v2`：第二版。将候选点排序从“复制棋盘 + 全盘评分”改为“落点附近四方向局部棋型评分”；一步必胜/防守判断改为直接方向计数；深层 alpha-beta 自动收窄候选分支。
-- `alpha-beta:v3`：第三版。在 `v2` 基础上加强棋型识别和评估，避免活四、跳四、活三等关键形态被固定五格窗口低估；候选裁剪会保留必胜、防必胜和高价值战术候选，方便和 `v2` 做同深度对比。
+- `alpha-beta:v3`：第三版。在 `v2` 基础上加强棋型识别和评估，避免活四、跳四、活三等关键形态被固定五格窗口低估；当前双四、四三、双三分别显式加权为 `2,000,000`、`1,200,000`、`80,000`，候选裁剪会保留必胜、防必胜和进攻/防守两侧的高价值战术候选。
 
 ## 规则
 
@@ -221,7 +222,7 @@ uv run gomoku --help
 - `--human black`：人类执黑。
 - `--human white`：人类执白。
 - `--ai alpha-beta`：人机对战中的 AI 注册名，默认值。
-- `--ai-version v2`：人机对战中的 AI 版本，默认值。
+- `--ai-version v3`：人机对战中的 AI 版本，默认值。
 - `--black-ai alpha-beta`：AI 对 AI 中黑棋注册名。
 - `--black-version v2`：AI 对 AI 中黑棋版本。
 - `--white-ai alpha-beta`：AI 对 AI 中白棋注册名。
@@ -296,7 +297,7 @@ uv run pytest
 - AI 首手下天元。
 - AI 能发现一步必胜。
 - AI 能阻挡对方一步必胜。
-- 第三版 AI 能识别更高价值的活四、活三棋型，并在候选裁剪时保留关键战术点。
+- 第三版 AI 能识别更高价值的活四、活三、双三等棋型，并在候选裁剪时保留进攻和防守两侧的关键战术点。
 - AI 玩家工厂、随机基线和算法对比统计。
 - 普通 CLI 对局循环。
 - TUI 坐标映射、结算菜单、难度和黑白切换。

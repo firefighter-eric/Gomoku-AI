@@ -1,4 +1,5 @@
 from gomoku_ai.ai import (
+    DOUBLE_THREE,
     OPEN_FOUR,
     OPEN_THREE,
     AlphaBetaAI,
@@ -9,6 +10,8 @@ from gomoku_ai.ai import (
     _move_wins,
     _score_line,
     _score_line_v3,
+    _v3_local_score_after_move,
+    _v3_threats_after_move,
 )
 from gomoku_ai.core import BLACK, EMPTY, WHITE, Board
 
@@ -135,3 +138,32 @@ def test_v3_candidate_limit_preserves_tactical_moves():
 
     assert any(move in moves for move in {(5, 2), (5, 7)})
     assert any(move in moves for move in {(9, 2), (9, 7)})
+
+
+def test_v3_scores_double_three_as_explicit_threat():
+    board = Board(size=15)
+    for col in (8, 9):
+        board.play(7, col, BLACK)
+    for row in (8, 9):
+        board.play(row, 7, BLACK)
+
+    threats = _v3_threats_after_move(board, 7, 7, BLACK)
+
+    assert threats.has_double_three
+    assert _v3_local_score_after_move(board, 7, 7, BLACK) >= DOUBLE_THREE
+
+
+def test_v3_candidate_limit_preserves_defensive_double_three():
+    board = Board(size=15)
+    for col in (8, 9):
+        board.play(7, col, WHITE)
+    for row in (8, 9):
+        board.play(row, 7, WHITE)
+    for col in range(3, 7):
+        board.play(5, col, BLACK)
+    ai = AlphaBetaV3AI(BLACK, depth=2, candidate_limit=1)
+
+    moves = ai._ordered_candidates(board, BLACK, limit=1)
+
+    assert any(move in moves for move in {(5, 2), (5, 7)})
+    assert (7, 7) in moves

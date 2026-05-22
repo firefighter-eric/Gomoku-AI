@@ -90,7 +90,7 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 ## 代码结构约定
 
 - `gomoku_ai/core.py`：只放棋盘、规则、落子、胜负检测、坐标解析和基础渲染。不要让它依赖 CLI、TUI、GUI 或 AI。
-- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。当前 `v1` 是第一版历史复刻，`v2` 保留为第二版默认算法，`v3` 是全面检查后的第三版。
+- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。当前 `v1` 是第一版历史复刻，`v2` 保留为第二版速度优化算法，`v3` 是当前默认算法。
 - `gomoku_ai/players.py`：放 AI 玩家协议、算法配置、算法注册和玩家工厂。新增算法应在这里注册，并实现 `choose_move(board)`。
 - `gomoku_ai/evaluate.py`：放 AI 对 AI 批量评测逻辑和 `gomoku-eval` 命令入口，不要把评测循环塞进界面层。
 - `gomoku_ai/game.py`：CLI、TUI、GUI 共用的对局会话、设置、回合结果和结算结果。
@@ -107,13 +107,14 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 - 默认胜利条件是五连或更长连线。
 - 默认规则是自由规则五子棋。
 - 默认 AI 搜索深度是 `4`。
-- 默认注册名是 `alpha-beta`，默认版本是 `v2`。
+- 默认注册名是 `alpha-beta`，默认版本是 `v3`。
 - `random:v0` 是随机基线，`alpha-beta:v1` 是第一版，`alpha-beta:v2` 是第二版，`alpha-beta:v3` 是第三版。
 - 注册名不要使用 `v0`、`v1` 这样的版本号；版本号通过 `version` 字段或 CLI 的 `--*-version` 参数表达。
 - 正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比 8 场；当前每轮只跑 `v2`、`v3` 与它比赛并记录结果，不再跑 `v0`。
 - 黑棋先手。
 - 第一版不实现禁手、三三、四四、长连禁手等正式连珠规则。
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。
+- GUI 运行面板和结算界面需要允许在人机模式与 AI 对 AI 模式之间切换。运行中切换模式会直接按新模式重开，结算界面切换模式后通过 `Restart` 生效。
 - GUI 结算界面还需要允许通过下拉框切换算法版本。人机模式切换当前 AI 算法，AI 对 AI 模式分别切换黑白双方算法；`random:v0` 不使用搜索深度，界面上应禁用对应深度调整。
 
 ## 文档约定

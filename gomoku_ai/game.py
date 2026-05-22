@@ -18,9 +18,9 @@ class GameSettings:
     mode: str = "human-ai"
     size: int = 15
     human_stone: int = BLACK
-    ai_algorithm: str = "v2"
-    black_algorithm: str = "v2"
-    white_algorithm: str = "v2"
+    ai_algorithm: str = "v3"
+    black_algorithm: str = "v3"
+    white_algorithm: str = "v3"
     depth: int = 4
     black_depth: int = 4
     white_depth: int = 4

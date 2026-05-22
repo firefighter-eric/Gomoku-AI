@@ -28,7 +28,7 @@ class GomokuPlayer(Protocol):
 
 @dataclass(frozen=True)
 class PlayerSpec:
-    algorithm: str = "v2"
+    algorithm: str = "v3"
     depth: int = 4
     seed: int = 20260521
 
@@ -84,10 +84,10 @@ def normalize_algorithm(algorithm: str) -> str:
         "alpha-beta-v1": "v1",
         "alphabeta-v1": "v1",
         "alphabeta_v1": "v1",
-        "alpha-beta": "v2",
-        "alpha_beta": "v2",
-        "alphabeta": "v2",
-        "ab": "v2",
+        "alpha-beta": "v3",
+        "alpha_beta": "v3",
+        "alphabeta": "v3",
+        "ab": "v3",
         "alpha-beta-v2": "v2",
         "alphabeta-v2": "v2",
         "alphabeta_v2": "v2",
@@ -110,7 +110,7 @@ def resolve_algorithm_version(registry_name: str | None, version: str | None = N
     version_value = normalize_algorithm(version) if version is not None else None
 
     if registry_value in REGISTRY_NAME_CHOICES:
-        default_version = "v0" if registry_value == "random" else "v2"
+        default_version = "v0" if registry_value == "random" else "v3"
         resolved = version_value or default_version
         if REGISTRY_NAMES[resolved] != registry_value:
             raise ValueError(f"version {resolved!r} does not belong to registry {registry_value!r}")

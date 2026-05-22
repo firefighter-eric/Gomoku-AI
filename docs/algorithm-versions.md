@@ -8,10 +8,10 @@
 | --- | --- | --- | --- |
 | `random` | `v0` | 测试/基线 | 不做搜索，随机选择候选点，主要用于冒烟测试和胜率参照。 |
 | `alpha-beta` | `v1` | 历史复刻版 | 参考 `firefighter-eric/TicTacToe-AI` 思路搭建五子棋 AI 基础结构，用于和后续版本做性能/棋力对比。 |
-| `alpha-beta` | `v2` | 当前默认 | 在第一版基础上做速度优化，适合作为稳定对照组。 |
-| `alpha-beta` | `v3` | 当前增强版 | 在第二版基础上加强棋型评分和关键候选保留，用于棋力改进对比。 |
+| `alpha-beta` | `v2` | 速度优化版 | 在第一版基础上做速度优化，适合作为稳定对照组。 |
+| `alpha-beta` | `v3` | 当前默认 | 在第二版基础上加强棋型评分和关键候选保留，用于棋力改进对比。 |
 
-当前默认注册名是 `alpha-beta`，默认版本是 `v2`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta`、`alphabeta-v3` 仍作为兼容别名保留，但文档和命令示例统一使用“注册名 + 版本号”。
+当前默认注册名是 `alpha-beta`，默认版本是 `v3`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta`、`alphabeta-v3` 仍作为兼容别名保留，但文档和命令示例统一使用“注册名 + 版本号”。
 
 ## 第一版：基础 alpha-beta
 
@@ -49,7 +49,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v1 --white-ai a
 
 版本：`v2`
 
-第二版是当前默认算法。它保留第一版的整体搜索架构，但把几个主要热路径换成更轻的实现。
+第二版保留第一版的整体搜索架构，但把几个主要热路径换成更轻的实现。它曾作为默认算法保留，现在主要作为速度优化版和稳定对照组。
 
 核心改进：
 
@@ -60,7 +60,6 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v1 --white-ai a
 
 适用场景：
 
-- 默认人机对战。
 - AI 对 AI 的稳定参照组。
 - 后续算法版本的基线对照。
 
@@ -83,13 +82,14 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 
 版本：`v3`
 
-第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较。
+第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较；当前默认 AI 是 `alpha-beta:v3`。
 
 核心改进：
 
 - 新增更细的棋型模式评分，覆盖活四、冲四、跳四、活三、眠三、活二等形态。
+- 对落点级复合威胁增加显式加权：双四 `2,000,000`、四三 `1,200,000`、双三 `80,000`。
 - 局面评估使用第三版棋型评分，减少固定五格窗口对活四、跳四、活三的低估。
-- 候选点裁剪时保留关键战术点，包括己方必胜、防对方必胜、活四相关候选和高价值进攻候选。
+- 候选点裁剪时保留关键战术点，包括己方必胜、防对方必胜、活四、双四、四三、己方双三和防对方双三候选。
 - 修复同一个 AI 实例跨不同棋盘大小复用时 Zobrist 表尺寸不匹配的问题。
 
 适用场景：
@@ -102,7 +102,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 
 - 第三版仍沿用第二版的 alpha-beta 主框架，没有引入 make/undo 增量搜索。
 - 第三版仍是固定深度搜索，没有时间预算和迭代加深。
-- 棋型模式是工程化启发式，并非完整职业连珠规则。
+- 棋型模式是工程化启发式，并非完整职业连珠规则；双三在自由规则下作为高价值威胁处理，不作为禁手处理。
 - 当前项目默认是自由规则五子棋，第三版不处理禁手、三三、四四或长连禁手。
 
 示例命令：
@@ -136,7 +136,7 @@ uv run gomoku --help
 
 正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-最新 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
+上一轮 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；该结果记录于 `v3` 增强双三/四三/双四显式加权之前，完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
 
 第二版对第一版：
 
@@ -185,4 +185,4 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 - 引入迭代加深和时间预算，让 GUI/TUI 高难度仍能保持响应。
 - 使用标准置换表 entry，记录 exact、lower bound、upper bound 和最佳着法。
 - 增加开局库或常见定式。
-- 增加更系统的战术搜索，例如连续冲四、双三、双四和 VCF/VC2 类型强制胜检测。
+- 增加更系统的战术搜索，例如连续冲四和 VCF/VC2 类型强制胜检测。

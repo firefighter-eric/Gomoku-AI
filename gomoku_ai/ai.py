@@ -8,7 +8,10 @@ from gomoku_ai.core import BLACK, DRAW, EMPTY, WHITE, Board, opponent
 
 WIN_SCORE = 10_000_000
 OPEN_FOUR = 1_000_000
+DOUBLE_FOUR = 2_000_000
+FOUR_THREE = 1_200_000
 FOUR = 100_000
+DOUBLE_THREE = 80_000
 OPEN_THREE = 12_000
 THREE = 1_500
 OPEN_TWO = 350
@@ -21,6 +24,34 @@ DIRECTIONS = ((0, 1), (1, 0), (1, 1), (1, -1))
 class SearchStats:
     nodes: int = 0
     cache_hits: int = 0
+
+
+@dataclass(frozen=True)
+class V3MoveThreats:
+    open_fours: int = 0
+    fours: int = 0
+    open_threes: int = 0
+    threes: int = 0
+
+    @property
+    def four_threats(self) -> int:
+        return self.open_fours + self.fours
+
+    @property
+    def has_double_four(self) -> bool:
+        return self.four_threats >= 2
+
+    @property
+    def has_four_three(self) -> bool:
+        return self.four_threats >= 1 and self.open_threes >= 1
+
+    @property
+    def has_double_three(self) -> bool:
+        return self.open_threes >= 2
+
+    @property
+    def is_forcing(self) -> bool:
+        return self.has_double_four or self.has_four_three or self.has_double_three
 
 
 class ZobristHasher:
@@ -469,10 +500,26 @@ def _v3_local_score_after_move(board: Board, row: int, col: int, stone: int) -> 
         return 0
 
     score = 0
+    open_fours = 0
+    fours = 0
+    open_threes = 0
+    threes = 0
     for row_step, col_step in DIRECTIONS:
         line = _line_through_move(board, row, col, row_step, col_step, stone)
         score += _score_line_v3(line, stone)
-    return score
+        line_threats = _v3_line_threats(line, stone)
+        open_fours += line_threats.open_fours
+        fours += line_threats.fours
+        open_threes += line_threats.open_threes
+        threes += line_threats.threes
+    return score + _v3_threat_bonus(
+        V3MoveThreats(
+            open_fours=open_fours,
+            fours=fours,
+            open_threes=open_threes,
+            threes=threes,
+        )
+    )
 
 
 def _line_through_move(
@@ -503,9 +550,62 @@ def _is_v3_tactical_candidate(board: Board, row: int, col: int, stone: int) -> b
     if _move_wins(board, row, col, stone) or _move_wins(board, row, col, other):
         return True
 
-    own_score = _v3_local_score_after_move(board, row, col, stone)
-    block_score = _v3_local_score_after_move(board, row, col, other)
-    return own_score >= OPEN_FOUR or block_score >= OPEN_FOUR or own_score >= OPEN_THREE * 2
+    own_threats = _v3_threats_after_move(board, row, col, stone)
+    block_threats = _v3_threats_after_move(board, row, col, other)
+    return (
+        own_threats.four_threats >= 1
+        or block_threats.four_threats >= 1
+        or own_threats.is_forcing
+        or block_threats.is_forcing
+    )
+
+
+def _v3_threats_after_move(board: Board, row: int, col: int, stone: int) -> V3MoveThreats:
+    if not board.is_empty_at(row, col):
+        return V3MoveThreats()
+
+    open_fours = 0
+    fours = 0
+    open_threes = 0
+    threes = 0
+    for row_step, col_step in DIRECTIONS:
+        line = _line_through_move(board, row, col, row_step, col_step, stone)
+        line_threats = _v3_line_threats(line, stone)
+        open_fours += line_threats.open_fours
+        fours += line_threats.fours
+        open_threes += line_threats.open_threes
+        threes += line_threats.threes
+    return V3MoveThreats(
+        open_fours=open_fours,
+        fours=fours,
+        open_threes=open_threes,
+        threes=threes,
+    )
+
+
+def _v3_line_threats(line: list[int], stone: int) -> V3MoveThreats:
+    text = _line_to_pattern(line, stone)
+    has_open_four = _contains_any_pattern(text, OPEN_FOUR_PATTERNS)
+    has_four = _contains_any_pattern(text, FOUR_PATTERNS) and not has_open_four
+    has_open_three = _contains_any_pattern(text, OPEN_THREE_PATTERNS) and not has_open_four and not has_four
+    has_three = _contains_any_pattern(text, THREE_PATTERNS) and not has_open_four and not has_four and not has_open_three
+    return V3MoveThreats(
+        open_fours=int(has_open_four),
+        fours=int(has_four),
+        open_threes=int(has_open_three),
+        threes=int(has_three),
+    )
+
+
+def _v3_threat_bonus(threats: V3MoveThreats) -> int:
+    score = 0
+    if threats.has_double_four:
+        score += DOUBLE_FOUR
+    if threats.has_four_three:
+        score += FOUR_THREE
+    if threats.has_double_three:
+        score += DOUBLE_THREE
+    return score
 
 
 def _count_line_side(
@@ -642,6 +742,10 @@ def _count_pattern_occurrences(text: str, patterns: tuple[str, ...]) -> int:
             total += 1
             start = index + 1
     return total
+
+
+def _contains_any_pattern(text: str, patterns: tuple[str, ...]) -> bool:
+    return any(pattern in text for pattern in patterns)
 
 
 def _lines(board: Board) -> list[list[int]]:

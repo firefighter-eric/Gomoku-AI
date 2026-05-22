@@ -8,9 +8,9 @@ def test_default_settings_use_depth_four():
     assert settings.depth == 4
     assert settings.black_depth == 4
     assert settings.white_depth == 4
-    assert settings.ai_algorithm == "v2"
-    assert settings.black_algorithm == "v2"
-    assert settings.white_algorithm == "v2"
+    assert settings.ai_algorithm == "v3"
+    assert settings.black_algorithm == "v3"
+    assert settings.white_algorithm == "v3"
 
 
 def test_human_move_updates_board_and_turn():
