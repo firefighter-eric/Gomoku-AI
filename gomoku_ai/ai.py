@@ -54,6 +54,26 @@ class V3MoveThreats:
         return self.has_double_four or self.has_four_three or self.has_double_three
 
 
+@dataclass(frozen=True)
+class V4LineAnalysis:
+    score: int
+    threats: V3MoveThreats
+
+
+@dataclass(frozen=True)
+class V4MoveAnalysis:
+    score: int
+    threats: V3MoveThreats
+
+
+@dataclass(frozen=True)
+class V4CandidateAnalysis:
+    score: int
+    own_threats: V3MoveThreats
+    block_threats: V3MoveThreats
+    tactical: bool
+
+
 class ZobristHasher:
     def __init__(self, size: int, seed: int = 20260521) -> None:
         rng = random.Random(seed + size)
@@ -401,6 +421,52 @@ class AlphaBetaV3AI(AlphaBetaAI):
         return score
 
 
+class AlphaBetaV4AI(AlphaBetaV3AI):
+    """V4 alpha-beta variant with V3 tactics plus reused candidate analysis."""
+
+    name = "v4"
+
+    def _ordered_candidates(
+        self,
+        board: Board,
+        stone: int,
+        *,
+        limit: int | None,
+    ) -> list[tuple[int, int]]:
+        candidates = generate_candidate_moves(board, radius=self.candidate_radius)
+        scored = []
+        for row, col in candidates:
+            analysis = _v4_candidate_analysis(board, row, col, stone)
+            scored.append((analysis.score, row, col, analysis))
+        scored.sort(reverse=True)
+
+        selected: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for _score, row, col, analysis in scored:
+            move = (row, col)
+            is_within_limit = limit is None or len(selected) < limit
+            if is_within_limit or analysis.tactical:
+                if move not in seen:
+                    selected.append(move)
+                    seen.add(move)
+        return selected
+
+    def _move_order_score(self, board: Board, row: int, col: int, stone: int) -> int:
+        return _v4_candidate_analysis(board, row, col, stone).score
+
+    def _evaluate(self, board: Board) -> int:
+        key = self._hash(board)
+        if key in self._eval_cache:
+            self.stats.cache_hits += 1
+            return self._eval_cache[key]
+
+        own = _evaluate_for_v4(board, self.stone)
+        enemy = _evaluate_for_v4(board, opponent(self.stone))
+        score = own - int(enemy * 1.16) + _center_bias(board, self.stone)
+        self._eval_cache[key] = score
+        return score
+
+
 def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, int]]:
     if board.is_empty():
         center = board.size // 2
@@ -560,6 +626,70 @@ def _is_v3_tactical_candidate(board: Board, row: int, col: int, stone: int) -> b
     )
 
 
+def _v4_candidate_analysis(board: Board, row: int, col: int, stone: int) -> V4CandidateAnalysis:
+    if _move_wins(board, row, col, stone):
+        return V4CandidateAnalysis(
+            score=WIN_SCORE,
+            own_threats=V3MoveThreats(),
+            block_threats=V3MoveThreats(),
+            tactical=True,
+        )
+
+    other = opponent(stone)
+    if _move_wins(board, row, col, other):
+        return V4CandidateAnalysis(
+            score=WIN_SCORE - 1,
+            own_threats=V3MoveThreats(),
+            block_threats=V3MoveThreats(),
+            tactical=True,
+        )
+
+    center = (board.size - 1) / 2
+    center_bonus = int((board.size - abs(center - row) - abs(center - col)) * 10)
+    own = _v4_move_analysis_after_move(board, row, col, stone)
+    block = _v4_move_analysis_after_move(board, row, col, other)
+    neighbor_bonus = _neighbor_count(board, row, col) * 20
+    tactical = (
+        own.threats.four_threats >= 1
+        or block.threats.four_threats >= 1
+        or own.threats.is_forcing
+        or block.threats.is_forcing
+    )
+    return V4CandidateAnalysis(
+        score=own.score * 2 + int(block.score * 1.5) + center_bonus + neighbor_bonus,
+        own_threats=own.threats,
+        block_threats=block.threats,
+        tactical=tactical,
+    )
+
+
+def _v4_move_analysis_after_move(board: Board, row: int, col: int, stone: int) -> V4MoveAnalysis:
+    if not board.is_empty_at(row, col):
+        return V4MoveAnalysis(score=0, threats=V3MoveThreats())
+
+    score = 0
+    open_fours = 0
+    fours = 0
+    open_threes = 0
+    threes = 0
+    for row_step, col_step in DIRECTIONS:
+        line = _line_through_move(board, row, col, row_step, col_step, stone)
+        line_analysis = _analyze_line_v4(line, stone)
+        score += line_analysis.score
+        open_fours += line_analysis.threats.open_fours
+        fours += line_analysis.threats.fours
+        open_threes += line_analysis.threats.open_threes
+        threes += line_analysis.threats.threes
+
+    threats = V3MoveThreats(
+        open_fours=open_fours,
+        fours=fours,
+        open_threes=open_threes,
+        threes=threes,
+    )
+    return V4MoveAnalysis(score=score + _v3_threat_bonus(threats), threats=threats)
+
+
 def _v3_threats_after_move(board: Board, row: int, col: int, stone: int) -> V3MoveThreats:
     if not board.is_empty_at(row, col):
         return V3MoveThreats()
@@ -583,6 +713,10 @@ def _v3_threats_after_move(board: Board, row: int, col: int, stone: int) -> V3Mo
     )
 
 
+def _v4_threats_after_move(board: Board, row: int, col: int, stone: int) -> V3MoveThreats:
+    return _v4_move_analysis_after_move(board, row, col, stone).threats
+
+
 def _v3_line_threats(line: list[int], stone: int) -> V3MoveThreats:
     text = _line_to_pattern(line, stone)
     has_open_four = _contains_any_pattern(text, OPEN_FOUR_PATTERNS)
@@ -595,6 +729,10 @@ def _v3_line_threats(line: list[int], stone: int) -> V3MoveThreats:
         open_threes=int(has_open_three),
         threes=int(has_three),
     )
+
+
+def _v4_line_threats(line: list[int], stone: int) -> V3MoveThreats:
+    return _analyze_line_v4(line, stone).threats
 
 
 def _v3_threat_bonus(threats: V3MoveThreats) -> int:
@@ -668,6 +806,13 @@ def _evaluate_for_v3(board: Board, stone: int) -> int:
     return score
 
 
+def _evaluate_for_v4(board: Board, stone: int) -> int:
+    score = 0
+    for line in _lines(board):
+        score += _score_line_v4(line, stone)
+    return score
+
+
 def _score_line(line: list[int], stone: int) -> int:
     other = opponent(stone)
     score = 0
@@ -713,6 +858,68 @@ def _score_line_v3(line: list[int], stone: int) -> int:
     score += _count_pattern_occurrences(text, OPEN_THREE_PATTERNS) * OPEN_THREE
     score += _count_pattern_occurrences(text, THREE_PATTERNS) * THREE
     score += _count_pattern_occurrences(text, OPEN_TWO_PATTERNS) * OPEN_TWO
+    return score
+
+
+def _score_line_v4(line: list[int], stone: int) -> int:
+    return _analyze_line_v4(line, stone).score
+
+
+def _analyze_line_v4(line: list[int], stone: int) -> V4LineAnalysis:
+    text = _line_to_pattern(line, stone)
+    win_count = _count_pattern_occurrences(text, ("XXXXX",))
+    open_four_count = _count_pattern_occurrences(text, OPEN_FOUR_PATTERNS)
+    four_count = _count_pattern_occurrences(text, FOUR_PATTERNS)
+    open_three_count = _count_pattern_occurrences(text, OPEN_THREE_PATTERNS)
+    three_count = _count_pattern_occurrences(text, THREE_PATTERNS)
+    open_two_count = _count_pattern_occurrences(text, OPEN_TWO_PATTERNS)
+
+    score = max(_score_text_windows(text), win_count * WIN_SCORE)
+    score += open_four_count * OPEN_FOUR
+    score += four_count * FOUR
+    score += open_three_count * OPEN_THREE
+    score += three_count * THREE
+    score += open_two_count * OPEN_TWO
+
+    has_open_four = open_four_count > 0
+    has_four = four_count > 0 and not has_open_four
+    has_open_three = open_three_count > 0 and not has_open_four and not has_four
+    has_three = three_count > 0 and not has_open_four and not has_four and not has_open_three
+    threats = V3MoveThreats(
+        open_fours=int(has_open_four),
+        fours=int(has_four),
+        open_threes=int(has_open_three),
+        threes=int(has_three),
+    )
+    return V4LineAnalysis(score=score, threats=threats)
+
+
+def _score_text_windows(text: str) -> int:
+    score = 0
+    window = 5
+    for start in range(0, len(text) - window + 1):
+        segment = text[start : start + window]
+        if "O" in segment:
+            continue
+
+        own = segment.count("X")
+        empty = segment.count(".")
+        if own == 5:
+            score += WIN_SCORE
+            continue
+
+        left_open = start > 0 and text[start - 1] == "."
+        right_open = start + window < len(text) and text[start + window] == "."
+        open_ends = int(left_open) + int(right_open)
+
+        if own == 4 and empty == 1:
+            score += OPEN_FOUR if open_ends == 2 else FOUR
+        elif own == 3 and empty == 2:
+            score += OPEN_THREE if open_ends == 2 else THREE
+        elif own == 2 and empty == 3:
+            score += OPEN_TWO if open_ends == 2 else TWO
+        elif own == 1 and empty == 4:
+            score += SINGLE
     return score
 
 

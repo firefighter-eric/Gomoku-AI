@@ -2,6 +2,8 @@
 
 本文档记录 `Gomoku-AI` 中不同算法版本的目标、实现边界、注册名、适用场景和对比方式。README 只保留简要介绍，算法细节和后续版本演进以本文档为准。
 
+性能优化记录见 [performance-notes.md](performance-notes.md)，正式对局结果见 [evaluation-results.md](evaluation-results.md)。
+
 ## 版本总览
 
 | 注册名 | 版本 | 状态 | 定位 |
@@ -9,9 +11,10 @@
 | `random` | `v0` | 测试/基线 | 不做搜索，随机选择候选点，主要用于冒烟测试和胜率参照。 |
 | `alpha-beta` | `v1` | 历史复刻版 | 参考 `firefighter-eric/TicTacToe-AI` 思路搭建五子棋 AI 基础结构，用于和后续版本做性能/棋力对比。 |
 | `alpha-beta` | `v2` | 速度优化版 | 在第一版基础上做速度优化，适合作为稳定对照组。 |
-| `alpha-beta` | `v3` | 当前默认 | 在第二版基础上加强棋型评分和关键候选保留，用于棋力改进对比。 |
+| `alpha-beta` | `v3` | 棋型增强版 | 在第二版基础上加强棋型评分和关键候选保留，用于棋力改进对比。 |
+| `alpha-beta` | `v4` | 当前默认 | 在第三版基础上整合候选分析复用和字符串窗口评分，用于性能优化对比。 |
 
-当前默认注册名是 `alpha-beta`，默认版本是 `v3`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta`、`alphabeta-v3` 仍作为兼容别名保留，但文档和命令示例统一使用“注册名 + 版本号”。
+当前默认注册名是 `alpha-beta`，默认版本是 `v4`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta-v3`、`alphabeta-v4` 等仍作为兼容别名保留；无版本的 `alphabeta` / `alpha-beta` 会解析到当前默认版本。
 
 ## 第一版：基础 alpha-beta
 
@@ -82,7 +85,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 
 版本：`v3`
 
-第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较；当前默认 AI 是 `alpha-beta:v3`。
+第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较；当前主要作为棋型增强基线，默认 AI 已切换到 `alpha-beta:v4`。
 
 核心改进：
 
@@ -95,7 +98,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 适用场景：
 
 - 和第二版 `v2` 做同深度棋力对比。
-- 作为后续 V4 的直接基础。
+- 作为第四版 `v4` 的直接基础。
 - 测试更复杂棋型评分对实际胜率的影响。
 
 已知边界：
@@ -110,6 +113,41 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 ```bash
 uv run gomoku --mode human-ai --ai alpha-beta --ai-version v3 --depth 4
 uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai alpha-beta --white-version v2 --black-depth 4 --white-depth 4
+```
+
+## 第四版：性能复用版 alpha-beta
+
+注册名：`alpha-beta`
+
+版本：`v4`
+
+第四版把上一轮性能检查中验证过的优化固化成新版本。它继承第三版的棋型评分、双四/四三/双三显式加权和战术候选保留，但把热路径里的重复分析合并，方便后续把 `v3` 和 `v4` 分开做性能/棋力对比。
+
+核心改进：
+
+- 候选点排序和战术保留阶段复用同一个 `V4CandidateAnalysis`，避免同一个候选点重复计算评分和威胁分类。
+- 落点四方向分析通过 `V4MoveAnalysis` 同时返回总分和 `V3MoveThreats`，避免评分和威胁判断各扫一遍线。
+- 线型分析通过 `V4LineAnalysis` 同时返回棋型分和威胁分类。
+- 基础五格窗口评分改为直接在 pattern 字符串上计算，减少列表切片和 `count()` 的重复开销。
+- 默认 `alpha-beta` / `alphabeta` 别名解析到 `v4`。
+
+适用场景：
+
+- 当前默认人机对战、TUI、GUI 和 AI 对 AI 算法。
+- 和 `v3` 做同棋型语义下的性能对比。
+- 和 `v1` 做正式 8 局基线赛，记录第四版综合表现。
+
+已知边界：
+
+- 第四版仍沿用 alpha-beta + `Board.with_move(...)` 复制棋盘的搜索框架。
+- Zobrist hash 仍通过扫描棋盘石子计算，尚未改为增量 hash。
+- 置换表仍未记录 exact/lower/upper bound，也没有迭代加深和时间预算。
+
+示例命令：
+
+```bash
+uv run gomoku --mode human-ai --ai alpha-beta --ai-version v4 --depth 4
+uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v4 --white-ai alpha-beta --white-version v3 --black-depth 4 --white-depth 4
 ```
 
 ## 随机基线
@@ -134,9 +172,9 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 uv run gomoku --help
 ```
 
-正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 分别对 `alpha-beta:v1`；结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-上一轮 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；该结果记录于 `v3` 增强双三/四三/双四显式加权之前，完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
+当前 d=5 基线结果：`alpha-beta:v2(d5)`、`alpha-beta:v3(d5)`、`alpha-beta:v4(d5)` 对 `alpha-beta:v1(d5)` 都是 4:4；其中 `v4(d5)` 墙钟耗时为 443.05s，完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
 
 第二版对第一版：
 
@@ -150,16 +188,22 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-第二版对第三版属于探索性横向对比，不替代基线记录：
+第四版对第一版：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 4 --second-depth 4 --games 8
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
+第四版对第三版属于探索性横向对比，不替代基线记录：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v3 --first-depth 4 --second-depth 4 --games 8
 ```
 
 快速冒烟测试：
 
 ```bash
-uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v2 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 4
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v3 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 4
 ```
 
 `gomoku-eval` 默认交替先后手，默认场数为 8，默认 `--jobs 0` 表示每局比赛一个独立进程并行运行。输出双方胜局、平局、提前停止局数、平均手数和每局明细。用 `--no-alternate-colors` 可以固定第一方执黑；用 `--jobs 1` 可以改回串行评测。
@@ -177,9 +221,9 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 
 建议保留旧算法注册名，除非明确要删除。这样每一版都能通过 `gomoku-eval` 做稳定对比，而不是只能凭主观体感判断棋力变化。
 
-## 后续候选版本
+## 后续候选方向
 
-可以考虑的第四版方向：
+可以考虑的后续方向：
 
 - 使用 make/undo 落子和增量 Zobrist，减少搜索中的棋盘复制。
 - 引入迭代加深和时间预算，让 GUI/TUI 高难度仍能保持响应。

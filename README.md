@@ -115,7 +115,7 @@ GUI 对局中的操作：
 - `Restart`：按当前设置重新开始。
 - `Exit`：退出窗口。
 
-GUI 结算界面会停留在最后局面。此时可以切换人机对战和 AI 对 AI，通过下拉框切换算法版本、调整人机难度（1 到 10）、切换黑白，或分别调整 AI 对 AI 的黑白双方算法和搜索深度（1 到 10），然后点击 `Restart` 开始新对局。当前 GUI 可切换 `random:v0`、`alpha-beta:v1`、`alpha-beta:v2` 和 `alpha-beta:v3`；`random:v0` 不使用搜索深度。
+GUI 结算界面会停留在最后局面。此时可以切换人机对战和 AI 对 AI，通过下拉框切换算法版本、调整人机难度（1 到 10）、切换黑白，或分别调整 AI 对 AI 的黑白双方算法和搜索深度（1 到 10），然后点击 `Restart` 开始新对局。当前 GUI 可切换 `random:v0`、`alpha-beta:v1`、`alpha-beta:v2`、`alpha-beta:v3` 和 `alpha-beta:v4`；`random:v0` 不使用搜索深度。
 
 ## AI 对 AI
 
@@ -142,9 +142,9 @@ uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2 --ui gui
 - `--black-depth`：黑棋 AI 搜索深度。
 - `--white-depth`：白棋 AI 搜索深度。
 - `--black-ai`：黑棋 AI 注册名，当前可选 `alpha-beta` 或 `random`。
-- `--black-version`：黑棋 AI 版本，当前可选 `v0`、`v1`、`v2` 或 `v3`。
+- `--black-version`：黑棋 AI 版本，当前可选 `v0`、`v1`、`v2`、`v3` 或 `v4`。
 - `--white-ai`：白棋 AI 注册名，当前可选 `alpha-beta` 或 `random`。
-- `--white-version`：白棋 AI 版本，当前可选 `v0`、`v1`、`v2` 或 `v3`。
+- `--white-version`：白棋 AI 版本，当前可选 `v0`、`v1`、`v2`、`v3` 或 `v4`。
 - `--delay`：AI 每步之间的展示延迟，单位秒。
 
 例如用 alpha-beta 对随机基线：
@@ -160,7 +160,8 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 - `random:v0`：随机基线，主要用于测试和强弱对比。
 - `alpha-beta:v1`：第一版 alpha-beta，保留“复制棋盘 + 全盘评分”的候选排序和模拟落子胜负判断，用作历史对照。
 - `alpha-beta:v2`：第二版 alpha-beta，实现局部候选排序、快速一步必胜/防守判断、深层候选收窄和 Zobrist 缓存。
-- `alpha-beta:v3`：第三版 alpha-beta，也是当前默认算法，在第二版基础上加强棋型评分，识别活四、冲四、跳四、活三等模式；当前还对双四、四三、双三做显式加权，并在候选裁剪时保留进攻和防守两侧的关键战术点。
+- `alpha-beta:v3`：第三版 alpha-beta，在第二版基础上加强棋型评分，识别活四、冲四、跳四、活三等模式；当前还对双四、四三、双三做显式加权，并在候选裁剪时保留进攻和防守两侧的关键战术点。
+- `alpha-beta:v4`：第四版 alpha-beta，也是当前默认算法，在第三版棋型和战术保留基础上加入候选分析复用、线型分析复用和字符串窗口评分，减少重复扫描。
 
 运行批量对比：
 
@@ -168,9 +169,9 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比固定 8 场，并默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 分别对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比固定 8 场，并默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 分别对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
-上一轮 d=5 基线结果：`alpha-beta:v2(d5)` 对 `alpha-beta:v1(d5)` 为 4:4，`alpha-beta:v3(d5)` 对 `alpha-beta:v1(d5)` 也是 4:4；该结果记录于 `v3` 增强双三/四三/双四显式加权之前，完整明细和耗时见 [docs/evaluation-results.md](docs/evaluation-results.md)。
+当前 d=5 基线结果：`alpha-beta:v2(d5)`、`alpha-beta:v3(d5)`、`alpha-beta:v4(d5)` 对 `alpha-beta:v1(d5)` 都是 4:4；其中 `v4(d5)` 墙钟耗时为 443.05s，完整明细和耗时见 [docs/evaluation-results.md](docs/evaluation-results.md)。
 
 对比第一版和第二版：
 
@@ -182,6 +183,12 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 
 ```bash
 uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
+对比第一版和第四版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
 默认会交替先后手，输出双方胜局、平局、提前停止局数、平均手数和每局明细。评测结果记录在 [docs/evaluation-results.md](docs/evaluation-results.md)。新增算法时，只要实现 `choose_move(board)` 并在 `gomoku_ai/players.py` 中注册，就可以被 `GameSession`、AI 对 AI 和 `gomoku-eval` 复用。
@@ -196,6 +203,7 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 - `alpha-beta:v1`：第一版。参考 `firefighter-eric/TicTacToe-AI` 的思路，建立棋盘状态、胜负检测、启发式评分、Zobrist 缓存、邻域候选点生成和 alpha-beta 搜索的基础结构，并保留较慢的“复制棋盘 + 全盘评分”候选排序。
 - `alpha-beta:v2`：第二版。将候选点排序从“复制棋盘 + 全盘评分”改为“落点附近四方向局部棋型评分”；一步必胜/防守判断改为直接方向计数；深层 alpha-beta 自动收窄候选分支。
 - `alpha-beta:v3`：第三版。在 `v2` 基础上加强棋型识别和评估，避免活四、跳四、活三等关键形态被固定五格窗口低估；当前双四、四三、双三分别显式加权为 `2,000,000`、`1,200,000`、`80,000`，候选裁剪会保留必胜、防必胜和进攻/防守两侧的高价值战术候选。
+- `alpha-beta:v4`：第四版。在 `v3` 基础上加入本轮性能优化：同一候选点只做一次综合分析，线型分析同时返回评分和威胁分类，并用字符串窗口评分减少列表切片与重复计数。
 
 ## 规则
 
@@ -222,7 +230,7 @@ uv run gomoku --help
 - `--human black`：人类执黑。
 - `--human white`：人类执白。
 - `--ai alpha-beta`：人机对战中的 AI 注册名，默认值。
-- `--ai-version v3`：人机对战中的 AI 版本，默认值。
+- `--ai-version v4`：人机对战中的 AI 版本，默认值。
 - `--black-ai alpha-beta`：AI 对 AI 中黑棋注册名。
 - `--black-version v2`：AI 对 AI 中黑棋版本。
 - `--white-ai alpha-beta`：AI 对 AI 中白棋注册名。
@@ -240,12 +248,14 @@ uv run gomoku --help
 - 一步必胜和一步防守使用快速方向计数，不复制棋盘。
 - 深层搜索会自动缩窄候选分支，减少高深度下的爆炸。
 - Zobrist 缓存会复用重复局面评分。
+- `alpha-beta:v4` 会复用同一次候选线型分析结果，避免排序和战术保留阶段重复扫描同一条线。
 
 建议：
 
 - 默认使用 `--depth 4`。
 - 想要更快响应时可以使用 `--depth 2` 或 `--depth 3`。
 - TUI 和 GUI 的结算界面可以在 1 到 10 之间调整难度。
+- 详细性能记录见 [docs/performance-notes.md](docs/performance-notes.md)。
 - `--depth 6` 以上仍可能明显变慢，尤其是棋盘中后期候选点较多时。
 
 ## 项目结构
@@ -253,7 +263,7 @@ uv run gomoku --help
 ```text
 gomoku_ai/
   core.py   # 棋盘、规则、落子、胜负检测、坐标解析和文本渲染
-  ai.py     # 启发式评分、候选点生成、Zobrist 缓存、v1/v2/v3 alpha-beta 搜索
+  ai.py     # 启发式评分、候选点生成、Zobrist 缓存、v1/v2/v3/v4 alpha-beta 搜索
   players.py # AI 玩家协议、算法注册、工厂和随机基线
   evaluate.py # AI 算法对战评测和 gomoku-eval 入口
   game.py   # CLI、TUI、GUI 共用的对局会话、设置、回合结果和结算结果

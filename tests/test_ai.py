@@ -5,13 +5,16 @@ from gomoku_ai.ai import (
     AlphaBetaAI,
     AlphaBetaV1AI,
     AlphaBetaV3AI,
+    AlphaBetaV4AI,
     find_immediate_win_by_simulation,
     generate_candidate_moves,
     _move_wins,
     _score_line,
     _score_line_v3,
+    _score_line_v4,
     _v3_local_score_after_move,
     _v3_threats_after_move,
+    _v4_threats_after_move,
 )
 from gomoku_ai.core import BLACK, EMPTY, WHITE, Board
 
@@ -127,6 +130,14 @@ def test_v3_line_scoring_recognizes_open_four_and_open_three():
     assert _score_line_v3(open_three, BLACK) >= OPEN_THREE
 
 
+def test_v4_line_scoring_matches_v3_patterns():
+    open_four = [EMPTY, BLACK, BLACK, BLACK, BLACK, EMPTY]
+    open_three = [EMPTY, EMPTY, BLACK, BLACK, BLACK, EMPTY]
+
+    assert _score_line_v4(open_four, BLACK) == _score_line_v3(open_four, BLACK)
+    assert _score_line_v4(open_three, BLACK) == _score_line_v3(open_three, BLACK)
+
+
 def test_v3_candidate_limit_preserves_tactical_moves():
     board = Board(size=15)
     for col in range(3, 7):
@@ -167,3 +178,20 @@ def test_v3_candidate_limit_preserves_defensive_double_three():
 
     assert any(move in moves for move in {(5, 2), (5, 7)})
     assert (7, 7) in moves
+
+
+def test_v4_keeps_v3_tactical_candidate_guards():
+    board = Board(size=15)
+    for col in (8, 9):
+        board.play(7, col, WHITE)
+    for row in (8, 9):
+        board.play(row, 7, WHITE)
+    for col in range(3, 7):
+        board.play(5, col, BLACK)
+    ai = AlphaBetaV4AI(BLACK, depth=2, candidate_limit=1)
+
+    moves = ai._ordered_candidates(board, BLACK, limit=1)
+
+    assert any(move in moves for move in {(5, 2), (5, 7)})
+    assert (7, 7) in moves
+    assert _v4_threats_after_move(board, 7, 7, WHITE).has_double_three

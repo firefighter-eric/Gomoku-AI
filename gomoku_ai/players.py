@@ -4,16 +4,17 @@ from dataclasses import dataclass
 from random import Random
 from typing import Protocol
 
-from gomoku_ai.ai import AlphaBetaAI, AlphaBetaV1AI, AlphaBetaV3AI, generate_candidate_moves
+from gomoku_ai.ai import AlphaBetaAI, AlphaBetaV1AI, AlphaBetaV3AI, AlphaBetaV4AI, generate_candidate_moves
 from gomoku_ai.core import BLACK, WHITE, Board
 
-ALGORITHM_NAMES = ("v0", "v1", "v2", "v3")
+ALGORITHM_NAMES = ("v0", "v1", "v2", "v3", "v4")
 REGISTRY_NAME_CHOICES = ("random", "alpha-beta")
 REGISTRY_NAMES = {
     "v0": "random",
     "v1": "alpha-beta",
     "v2": "alpha-beta",
     "v3": "alpha-beta",
+    "v4": "alpha-beta",
 }
 
 
@@ -28,7 +29,7 @@ class GomokuPlayer(Protocol):
 
 @dataclass(frozen=True)
 class PlayerSpec:
-    algorithm: str = "v3"
+    algorithm: str = "v4"
     depth: int = 4
     seed: int = 20260521
 
@@ -84,17 +85,20 @@ def normalize_algorithm(algorithm: str) -> str:
         "alpha-beta-v1": "v1",
         "alphabeta-v1": "v1",
         "alphabeta_v1": "v1",
-        "alpha-beta": "v3",
-        "alpha_beta": "v3",
-        "alphabeta": "v3",
-        "ab": "v3",
+        "alpha-beta": "v4",
+        "alpha_beta": "v4",
+        "alphabeta": "v4",
+        "ab": "v4",
         "alpha-beta-v2": "v2",
         "alphabeta-v2": "v2",
         "alphabeta_v2": "v2",
         "alpha-beta-v3": "v3",
         "alphabeta-v3": "v3",
         "alphabeta_v3": "v3",
-        "pattern": "v3",
+        "alpha-beta-v4": "v4",
+        "alphabeta-v4": "v4",
+        "alphabeta_v4": "v4",
+        "pattern": "v4",
     }
     value = aliases.get(value, value)
     if value not in ALGORITHM_NAMES:
@@ -110,7 +114,7 @@ def resolve_algorithm_version(registry_name: str | None, version: str | None = N
     version_value = normalize_algorithm(version) if version is not None else None
 
     if registry_value in REGISTRY_NAME_CHOICES:
-        default_version = "v0" if registry_value == "random" else "v3"
+        default_version = "v0" if registry_value == "random" else "v4"
         resolved = version_value or default_version
         if REGISTRY_NAMES[resolved] != registry_value:
             raise ValueError(f"version {resolved!r} does not belong to registry {registry_value!r}")
@@ -133,4 +137,6 @@ def create_player(stone: int, spec: PlayerSpec | None = None) -> GomokuPlayer:
         return AlphaBetaAI(stone, depth=spec.depth, seed=spec.seed)
     if algorithm == "v3":
         return AlphaBetaV3AI(stone, depth=spec.depth, seed=spec.seed)
+    if algorithm == "v4":
+        return AlphaBetaV4AI(stone, depth=spec.depth, seed=spec.seed)
     raise AssertionError(f"unhandled algorithm: {algorithm}")

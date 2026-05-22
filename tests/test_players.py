@@ -5,7 +5,7 @@ from gomoku_ai.players import PlayerSpec, RandomAI, available_algorithms, create
 
 
 def test_available_algorithms_include_baseline_and_alphabeta():
-    assert available_algorithms() == ("v0", "v1", "v2", "v3")
+    assert available_algorithms() == ("v0", "v1", "v2", "v3", "v4")
 
 
 def test_create_player_uses_player_spec():
@@ -18,7 +18,7 @@ def test_create_player_uses_player_spec():
 def test_create_player_accepts_alphabeta_alias():
     player = create_player(BLACK, PlayerSpec("alpha-beta", depth=1))
 
-    assert player.name == "v3"
+    assert player.name == "v4"
 
 
 def test_create_player_accepts_v1_alias():
@@ -31,6 +31,12 @@ def test_create_player_accepts_v3_alias():
     player = create_player(BLACK, PlayerSpec("v3", depth=1))
 
     assert player.name == "v3"
+
+
+def test_create_player_accepts_v4_alias():
+    player = create_player(BLACK, PlayerSpec("v4", depth=1))
+
+    assert player.name == "v4"
 
 
 def test_create_player_rejects_unknown_algorithm():
@@ -52,18 +58,20 @@ def test_player_spec_labels_depth_for_alphabeta():
     assert PlayerSpec("v1", depth=3).label == "alpha-beta:v1(d3)"
     assert PlayerSpec("v2", depth=3).label == "alpha-beta:v2(d3)"
     assert PlayerSpec("v3", depth=3).label == "alpha-beta:v3(d3)"
+    assert PlayerSpec("v4", depth=3).label == "alpha-beta:v4(d3)"
     assert PlayerSpec("v0", depth=3).label == "random:v0"
 
 
 def test_player_spec_exposes_registry_name_and_version():
-    spec = PlayerSpec("v3", depth=3)
+    spec = PlayerSpec("v4", depth=3)
 
     assert spec.registry_name == "alpha-beta"
-    assert spec.version == "v3"
+    assert spec.version == "v4"
 
 
 def test_legacy_algorithm_names_are_aliases():
     assert PlayerSpec("random").normalized_algorithm == "v0"
     assert PlayerSpec("alphabeta-v1").normalized_algorithm == "v1"
-    assert PlayerSpec("alphabeta").normalized_algorithm == "v3"
+    assert PlayerSpec("alphabeta").normalized_algorithm == "v4"
     assert PlayerSpec("alphabeta-v3").normalized_algorithm == "v3"
+    assert PlayerSpec("alphabeta-v4").normalized_algorithm == "v4"

@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gui", action="store_const", const="gui", dest="ui", help="Shortcut for --ui gui.")
     parser.add_argument("--human", choices=("black", "white"), default="black")
     parser.add_argument("--ai", default="alpha-beta", help=f"AI registry name, one of {', '.join(REGISTRY_NAME_CHOICES)}.")
-    parser.add_argument("--ai-version", choices=ALGORITHM_NAMES, help="AI version, one of v0, v1, v2, v3.")
+    parser.add_argument("--ai-version", choices=ALGORITHM_NAMES, help="AI version, one of v0, v1, v2, v3, v4.")
     parser.add_argument("--black-ai", help="Black AI registry name for AI-vs-AI.")
     parser.add_argument("--black-version", choices=ALGORITHM_NAMES, help="Black AI version for AI-vs-AI.")
     parser.add_argument("--white-ai", help="White AI registry name for AI-vs-AI.")
@@ -134,7 +134,7 @@ def play_human_ai(
     *,
     size: int = 15,
     human_stone: int = BLACK,
-    ai_algorithm: str = "v3",
+    ai_algorithm: str = "v4",
     depth: int = 4,
     max_moves: int | None = None,
     input_func: InputFunc = input,
@@ -184,8 +184,8 @@ def play_human_ai(
 def play_ai_ai(
     *,
     size: int = 15,
-    black_algorithm: str = "v3",
-    white_algorithm: str = "v3",
+    black_algorithm: str = "v4",
+    white_algorithm: str = "v4",
     black_depth: int = 4,
     white_depth: int = 4,
     delay: float = 0.0,

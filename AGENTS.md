@@ -71,7 +71,7 @@ uv run gomoku --mode ai-ai --black-depth 4 --white-depth 4 --delay 0.2
 uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
-正式算法评测以 `alpha-beta:v1` 为固定基线，每组对比 8 场，默认交替先后手。当前正式基线记录只跑 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3` 对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+正式算法评测以 `alpha-beta:v1` 为固定基线，每组对比 8 场，默认交替先后手。当前正式基线记录只跑 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 对 `alpha-beta:v1`；`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
 `gomoku-eval` 默认 `--jobs 0`，即每局比赛一个独立进程；长深度评测优先使用这个默认并行方式。如果需要调试单局或排查非确定性问题，再显式设置 `--jobs 1`。
 
@@ -87,10 +87,16 @@ uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --s
 uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
+对比第一版和第四版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
 ## 代码结构约定
 
 - `gomoku_ai/core.py`：只放棋盘、规则、落子、胜负检测、坐标解析和基础渲染。不要让它依赖 CLI、TUI、GUI 或 AI。
-- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。当前 `v1` 是第一版历史复刻，`v2` 保留为第二版速度优化算法，`v3` 是当前默认算法。
+- `gomoku_ai/ai.py`：只放 AI 搜索、评分、候选点、缓存相关逻辑。AI 应通过 `Board` 接口读写局面。当前 `v1` 是第一版历史复刻，`v2` 保留为第二版速度优化算法，`v3` 是第三版棋型增强算法，`v4` 是当前默认算法。
 - `gomoku_ai/players.py`：放 AI 玩家协议、算法配置、算法注册和玩家工厂。新增算法应在这里注册，并实现 `choose_move(board)`。
 - `gomoku_ai/evaluate.py`：放 AI 对 AI 批量评测逻辑和 `gomoku-eval` 命令入口，不要把评测循环塞进界面层。
 - `gomoku_ai/game.py`：CLI、TUI、GUI 共用的对局会话、设置、回合结果和结算结果。
@@ -107,10 +113,10 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 - 默认胜利条件是五连或更长连线。
 - 默认规则是自由规则五子棋。
 - 默认 AI 搜索深度是 `4`。
-- 默认注册名是 `alpha-beta`，默认版本是 `v3`。
-- `random:v0` 是随机基线，`alpha-beta:v1` 是第一版，`alpha-beta:v2` 是第二版，`alpha-beta:v3` 是第三版。
+- 默认注册名是 `alpha-beta`，默认版本是 `v4`。
+- `random:v0` 是随机基线，`alpha-beta:v1` 是第一版，`alpha-beta:v2` 是第二版，`alpha-beta:v3` 是第三版，`alpha-beta:v4` 是第四版。
 - 注册名不要使用 `v0`、`v1` 这样的版本号；版本号通过 `version` 字段或 CLI 的 `--*-version` 参数表达。
-- 正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比 8 场；当前每轮只跑 `v2`、`v3` 与它比赛并记录结果，不再跑 `v0`。
+- 正式算法强弱记录以 `alpha-beta:v1` 为基线，每组对比 8 场；当前每轮只跑 `v2`、`v3`、`v4` 与它比赛并记录结果，不再跑 `v0`。
 - 黑棋先手。
 - 第一版不实现禁手、三三、四四、长连禁手等正式连珠规则。
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。

@@ -169,6 +169,7 @@ def test_random_algorithm_disables_depth_controls():
 def test_algorithm_labels_use_registry_and_version():
     assert algorithm_label("v0") == "random:v0"
     assert algorithm_label("v2") == "alpha-beta:v2"
+    assert algorithm_label("v4") == "alpha-beta:v4"
 
 
 def test_dropdown_selection_updates_algorithm_setting():
