@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from math import inf
 
-from gomoku_ai.core import BLACK, DRAW, EMPTY, WHITE, Board, opponent
+from gomoku_ai.core import BLACK, DRAW, EMPTY, WHITE, Board, MoveUndo, opponent
 
 WIN_SCORE = 10_000_000
 OPEN_FOUR = 1_000_000
@@ -18,12 +18,23 @@ OPEN_TWO = 350
 TWO = 80
 SINGLE = 8
 DIRECTIONS = ((0, 1), (1, 0), (1, 1), (1, -1))
+TT_EXACT = "exact"
+TT_LOWER = "lower"
+TT_UPPER = "upper"
 
 
 @dataclass
 class SearchStats:
     nodes: int = 0
     cache_hits: int = 0
+
+
+@dataclass(frozen=True)
+class V4TranspositionEntry:
+    depth: int
+    value: int
+    flag: str
+    best_move: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +83,150 @@ class V4CandidateAnalysis:
     own_threats: V3MoveThreats
     block_threats: V3MoveThreats
     tactical: bool
+
+
+@dataclass(frozen=True)
+class _V4FrontierUndo:
+    move: tuple[int, int]
+    previous_count: int | None
+    added_moves: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class _V4EvaluationUndo:
+    own_score: int
+    enemy_score: int
+    center_bias: int
+    affected_own_score: int
+    affected_enemy_score: int
+
+
+@dataclass(frozen=True)
+class _V4SearchUndo:
+    board_undo: MoveUndo
+    frontier_undo: _V4FrontierUndo
+    evaluation_undo: _V4EvaluationUndo
+
+
+class _V4CandidateFrontier:
+    def __init__(self, board: Board, radius: int) -> None:
+        self.radius = radius
+        self._counts = self._build_counts(board, radius)
+
+    @classmethod
+    def _build_counts(cls, board: Board, radius: int) -> dict[tuple[int, int], int]:
+        if board.is_empty():
+            center = board.size // 2
+            return {(center, center): 1}
+
+        counts: dict[tuple[int, int], int] = {}
+        for row, col, _stone in board.stones():
+            for next_row, next_col in _neighbor_points(board, row, col, radius):
+                if board.is_empty_at(next_row, next_col):
+                    move = (next_row, next_col)
+                    counts[move] = counts.get(move, 0) + 1
+        return counts
+
+    def candidates(self) -> list[tuple[int, int]]:
+        return sorted(self._counts)
+
+    def make_move(self, board: Board, row: int, col: int) -> _V4FrontierUndo:
+        move = (row, col)
+        previous_count = self._counts.pop(move, None)
+        added_moves: list[tuple[int, int]] = []
+
+        for next_row, next_col in _neighbor_points(board, row, col, self.radius):
+            if board.is_empty_at(next_row, next_col):
+                added = (next_row, next_col)
+                self._counts[added] = self._counts.get(added, 0) + 1
+                added_moves.append(added)
+
+        return _V4FrontierUndo(
+            move=move,
+            previous_count=previous_count,
+            added_moves=tuple(added_moves),
+        )
+
+    def undo_move(self, undo: _V4FrontierUndo) -> None:
+        for move in reversed(undo.added_moves):
+            count = self._counts[move] - 1
+            if count <= 0:
+                del self._counts[move]
+            else:
+                self._counts[move] = count
+
+        if undo.previous_count is not None:
+            self._counts[undo.move] = undo.previous_count
+
+
+class _V4IncrementalEvaluator:
+    def __init__(self, board: Board, stone: int) -> None:
+        self.stone = stone
+        self.enemy = opponent(stone)
+        self.own_score = _evaluate_for_v4(board, stone)
+        self.enemy_score = _evaluate_for_v4(board, self.enemy)
+        self.center_bias = _center_bias(board, stone)
+
+    def score(self) -> int:
+        return self.own_score - int(self.enemy_score * 1.16) + self.center_bias
+
+    def prepare_move(self, board: Board, row: int, col: int) -> _V4EvaluationUndo:
+        own, enemy = self._affected_scores(board, row, col)
+        return _V4EvaluationUndo(
+            own_score=self.own_score,
+            enemy_score=self.enemy_score,
+            center_bias=self.center_bias,
+            affected_own_score=own,
+            affected_enemy_score=enemy,
+        )
+
+    def finish_move(
+        self,
+        board: Board,
+        row: int,
+        col: int,
+        stone: int,
+        undo: _V4EvaluationUndo,
+    ) -> None:
+        own, enemy = self._affected_scores(board, row, col)
+        self.own_score += own - undo.affected_own_score
+        self.enemy_score += enemy - undo.affected_enemy_score
+        self.center_bias += _center_bias_for_stone(board, row, col, stone, self.stone)
+
+    def undo_move(self, undo: _V4EvaluationUndo) -> None:
+        self.own_score = undo.own_score
+        self.enemy_score = undo.enemy_score
+        self.center_bias = undo.center_bias
+
+    def _affected_scores(self, board: Board, row: int, col: int) -> tuple[int, int]:
+        own = 0
+        enemy = 0
+        for line in _lines_through_point(board, row, col):
+            own += _score_line_v4(line, self.stone)
+            enemy += _score_line_v4(line, self.enemy)
+        return own, enemy
+
+
+class _V4SearchState:
+    def __init__(self, board: Board, stone: int, candidate_radius: int) -> None:
+        self.frontier = _V4CandidateFrontier(board, candidate_radius)
+        self.evaluator = _V4IncrementalEvaluator(board, stone)
+
+    def make_move(self, board: Board, row: int, col: int, stone: int) -> _V4SearchUndo:
+        evaluation_undo = self.evaluator.prepare_move(board, row, col)
+        board_undo = board.make_move(row, col, stone)
+        frontier_undo = self.frontier.make_move(board, row, col)
+        self.evaluator.finish_move(board, row, col, stone, evaluation_undo)
+        return _V4SearchUndo(
+            board_undo=board_undo,
+            frontier_undo=frontier_undo,
+            evaluation_undo=evaluation_undo,
+        )
+
+    def undo_move(self, board: Board, undo: _V4SearchUndo) -> None:
+        board.undo_move(undo.board_undo)
+        self.frontier.undo_move(undo.frontier_undo)
+        self.evaluator.undo_move(undo.evaluation_undo)
 
 
 class ZobristHasher:
@@ -124,6 +279,7 @@ class AlphaBetaAI:
         self._hash_size: int | None = None
         self._eval_cache: dict[int, int] = {}
         self._search_cache: dict[tuple[int, int, int], int] = {}
+        self._transposition_table: dict[tuple[int, int], V4TranspositionEntry] = {}
         self.stats = SearchStats()
 
     def choose_move(self, board: Board) -> tuple[int, int]:
@@ -300,6 +456,7 @@ class AlphaBetaAI:
             self._hash_size = size
             self._eval_cache.clear()
             self._search_cache.clear()
+            self._transposition_table.clear()
 
     def _hash(self, board: Board) -> int:
         self._ensure_hasher(board.size)
@@ -449,14 +606,21 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         self._ensure_hasher(board.size)
         self.stats = SearchStats()
         board_hash = self._hash(board)
-        candidates = self._ordered_candidates(board, self.stone, limit=self.candidate_limit)
+        state = _V4SearchState(board, self.stone, self.candidate_radius)
+        candidates = self._ordered_candidates_from(
+            board,
+            self.stone,
+            state.frontier.candidates(),
+            limit=self.candidate_limit,
+            preferred_move=None,
+        )
         best_move = candidates[0]
         best_value = -inf
         alpha = -inf
         beta = inf
 
         for row, col in candidates:
-            undo = board.make_move(row, col, self.stone)
+            undo = state.make_move(board, row, col, self.stone)
             child_hash = self._hash_after_move(board_hash, row, col, self.stone)
             try:
                 value = self._alpha_beta_v4(
@@ -467,9 +631,10 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
                     current_stone=opponent(self.stone),
                     last_move=(row, col),
                     board_hash=child_hash,
+                    state=state,
                 )
             finally:
-                board.undo_move(undo)
+                state.undo_move(board, undo)
             if value > best_value:
                 best_value = value
                 best_move = (row, col)
@@ -486,6 +651,7 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         current_stone: int,
         last_move: tuple[int, int] | None,
         board_hash: int,
+        state: _V4SearchState,
     ) -> int:
         self.stats.nodes += 1
 
@@ -497,25 +663,41 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         if terminal == DRAW:
             return 0
         if depth <= 0:
-            return self._evaluate_with_hash(board, board_hash)
+            return state.evaluator.score()
 
-        key = (board_hash, depth, current_stone)
-        if key in self._search_cache:
-            self.stats.cache_hits += 1
-            return self._search_cache[key]
+        key = (board_hash, current_stone)
+        original_alpha = alpha
+        original_beta = beta
+        cached = self._transposition_table.get(key)
+        if cached is not None and cached.depth >= depth:
+            if cached.flag == TT_EXACT:
+                self.stats.cache_hits += 1
+                return cached.value
+            if cached.flag == TT_LOWER:
+                alpha = max(alpha, cached.value)
+            elif cached.flag == TT_UPPER:
+                beta = min(beta, cached.value)
+            if alpha >= beta:
+                self.stats.cache_hits += 1
+                return cached.value
 
         maximizing = current_stone == self.stone
-        candidates = self._ordered_candidates(
+        candidates = self._ordered_candidates_from(
             board,
             current_stone,
+            state.frontier.candidates(),
             limit=self._candidate_limit_for_depth(depth),
+            preferred_move=cached.best_move if cached is not None else None,
         )
-        cutoff = False
+        if not candidates:
+            return state.evaluator.score()
+
+        best_move: tuple[int, int] | None = None
 
         if maximizing:
             value = -inf
             for row, col in candidates:
-                undo = board.make_move(row, col, current_stone)
+                undo = state.make_move(board, row, col, current_stone)
                 child_hash = self._hash_after_move(board_hash, row, col, current_stone)
                 try:
                     child_value = self._alpha_beta_v4(
@@ -526,18 +708,20 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
                         opponent(current_stone),
                         (row, col),
                         child_hash,
+                        state,
                     )
                 finally:
-                    board.undo_move(undo)
-                value = max(value, child_value)
+                    state.undo_move(board, undo)
+                if child_value > value:
+                    value = child_value
+                    best_move = (row, col)
                 alpha = max(alpha, value)
                 if beta <= alpha:
-                    cutoff = True
                     break
         else:
             value = inf
             for row, col in candidates:
-                undo = board.make_move(row, col, current_stone)
+                undo = state.make_move(board, row, col, current_stone)
                 child_hash = self._hash_after_move(board_hash, row, col, current_stone)
                 try:
                     child_value = self._alpha_beta_v4(
@@ -548,18 +732,33 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
                         opponent(current_stone),
                         (row, col),
                         child_hash,
+                        state,
                     )
                 finally:
-                    board.undo_move(undo)
-                value = min(value, child_value)
+                    state.undo_move(board, undo)
+                if child_value < value:
+                    value = child_value
+                    best_move = (row, col)
                 beta = min(beta, value)
                 if beta <= alpha:
-                    cutoff = True
                     break
 
         result = int(value)
-        if not cutoff:
-            self._search_cache[key] = result
+        if result <= original_alpha:
+            flag = TT_UPPER
+        elif result >= original_beta:
+            flag = TT_LOWER
+        else:
+            flag = TT_EXACT
+        self._store_transposition(
+            key,
+            V4TranspositionEntry(
+                depth=depth,
+                value=result,
+                flag=flag,
+                best_move=best_move,
+            ),
+        )
         return result
 
     def _ordered_candidates(
@@ -570,10 +769,32 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         limit: int | None,
     ) -> list[tuple[int, int]]:
         candidates = generate_candidate_moves(board, radius=self.candidate_radius)
+        return self._ordered_candidates_from(
+            board,
+            stone,
+            candidates,
+            limit=limit,
+            preferred_move=None,
+        )
+
+    def _ordered_candidates_from(
+        self,
+        board: Board,
+        stone: int,
+        candidates: list[tuple[int, int]],
+        *,
+        limit: int | None,
+        preferred_move: tuple[int, int] | None,
+    ) -> list[tuple[int, int]]:
         scored = []
         for row, col in candidates:
+            if not board.is_empty_at(row, col):
+                continue
             analysis = _v4_candidate_analysis(board, row, col, stone)
-            scored.append((analysis.score, row, col, analysis))
+            score = analysis.score
+            if preferred_move == (row, col):
+                score += WIN_SCORE * 2
+            scored.append((score, row, col, analysis))
         scored.sort(reverse=True)
 
         selected: list[tuple[int, int]] = []
@@ -599,15 +820,22 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
             self.stats.cache_hits += 1
             return self._eval_cache[key]
 
-        own = _evaluate_for_v4(board, self.stone)
-        enemy = _evaluate_for_v4(board, opponent(self.stone))
-        score = own - int(enemy * 1.16) + _center_bias(board, self.stone)
+        score = _v4_static_score(board, self.stone)
         self._eval_cache[key] = score
         return score
 
     def _hash_after_move(self, board_hash: int, row: int, col: int, stone: int) -> int:
         assert self._hasher is not None
         return self._hasher.update_hash(board_hash, row, col, stone)
+
+    def _store_transposition(
+        self,
+        key: tuple[int, int],
+        entry: V4TranspositionEntry,
+    ) -> None:
+        current = self._transposition_table.get(key)
+        if current is None or entry.depth >= current.depth:
+            self._transposition_table[key] = entry
 
 
 def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, int]]:
@@ -626,6 +854,24 @@ def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, i
                 if board.is_empty_at(next_row, next_col):
                     moves.add((next_row, next_col))
     return sorted(moves)
+
+
+def _neighbor_points(
+    board: Board,
+    row: int,
+    col: int,
+    radius: int,
+) -> list[tuple[int, int]]:
+    points = []
+    for row_delta in range(-radius, radius + 1):
+        for col_delta in range(-radius, radius + 1):
+            if row_delta == 0 and col_delta == 0:
+                continue
+            next_row = row + row_delta
+            next_col = col + col_delta
+            if board.is_on_board(next_row, next_col):
+                points.append((next_row, next_col))
+    return points
 
 
 def find_immediate_win(
@@ -956,6 +1202,12 @@ def _evaluate_for_v4(board: Board, stone: int) -> int:
     return score
 
 
+def _v4_static_score(board: Board, stone: int) -> int:
+    own = _evaluate_for_v4(board, stone)
+    enemy = _evaluate_for_v4(board, opponent(stone))
+    return own - int(enemy * 1.16) + _center_bias(board, stone)
+
+
 def _score_line(line: list[int], stone: int) -> int:
     other = opponent(stone)
     score = 0
@@ -1148,6 +1400,37 @@ def _lines(board: Board) -> list[list[int]]:
     return lines
 
 
+def _lines_through_point(board: Board, row: int, col: int) -> list[list[int]]:
+    size = board.size
+    lines = [
+        board.grid[row][:],
+        [board.grid[current_row][col] for current_row in range(size)],
+    ]
+
+    diagonal = []
+    current_row = row - min(row, col)
+    current_col = col - min(row, col)
+    while current_row < size and current_col < size:
+        diagonal.append(board.grid[current_row][current_col])
+        current_row += 1
+        current_col += 1
+    if len(diagonal) >= board.win_length:
+        lines.append(diagonal)
+
+    diagonal = []
+    distance_to_edge = min(row, size - 1 - col)
+    current_row = row - distance_to_edge
+    current_col = col + distance_to_edge
+    while current_row < size and current_col >= 0:
+        diagonal.append(board.grid[current_row][current_col])
+        current_row += 1
+        current_col -= 1
+    if len(diagonal) >= board.win_length:
+        lines.append(diagonal)
+
+    return lines
+
+
 def _center_bias(board: Board, stone: int) -> int:
     center = (board.size - 1) / 2
     score = 0
@@ -1159,3 +1442,10 @@ def _center_bias(board: Board, stone: int) -> int:
         else:
             score -= bias
     return score
+
+
+def _center_bias_for_stone(board: Board, row: int, col: int, stone: int, perspective: int) -> int:
+    center = (board.size - 1) / 2
+    distance = abs(center - row) + abs(center - col)
+    bias = int((board.size - distance) * 3)
+    return bias if stone == perspective else -bias

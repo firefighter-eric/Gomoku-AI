@@ -6,13 +6,18 @@ from gomoku_ai.ai import (
     AlphaBetaV1AI,
     AlphaBetaV3AI,
     AlphaBetaV4AI,
+    TT_EXACT,
+    TT_LOWER,
+    TT_UPPER,
     ZobristHasher,
     find_immediate_win_by_simulation,
     generate_candidate_moves,
     _move_wins,
     _score_line,
+    _V4SearchState,
     _score_line_v3,
     _score_line_v4,
+    _v4_static_score,
     _v3_local_score_after_move,
     _v3_threats_after_move,
     _v4_threats_after_move,
@@ -233,3 +238,63 @@ def test_v4_search_does_not_copy_board(monkeypatch):
     assert board.grid == grid
     assert board.last_move == last_move
     assert board.is_empty_at(*move)
+
+
+def test_v4_incremental_frontier_and_evaluator_match_full_rebuild():
+    board = Board(size=9)
+    board.play(4, 4, BLACK)
+    board.play(3, 3, WHITE)
+    state = _V4SearchState(board, BLACK, candidate_radius=1)
+    original_grid = [row[:] for row in board.grid]
+    original_last_move = board.last_move
+
+    first = state.make_move(board, 4, 5, BLACK)
+    assert state.frontier.candidates() == generate_candidate_moves(board, radius=1)
+    assert state.evaluator.score() == _v4_static_score(board, BLACK)
+
+    second = state.make_move(board, 5, 5, WHITE)
+    assert state.frontier.candidates() == generate_candidate_moves(board, radius=1)
+    assert state.evaluator.score() == _v4_static_score(board, BLACK)
+
+    state.undo_move(board, second)
+    assert state.frontier.candidates() == generate_candidate_moves(board, radius=1)
+    assert state.evaluator.score() == _v4_static_score(board, BLACK)
+
+    state.undo_move(board, first)
+    assert state.frontier.candidates() == generate_candidate_moves(board, radius=1)
+    assert state.evaluator.score() == _v4_static_score(board, BLACK)
+    assert board.grid == original_grid
+    assert board.last_move == original_last_move
+
+
+def test_v4_transposition_table_records_bounds_and_best_moves():
+    board = Board(size=9)
+    board.play(4, 4, BLACK)
+    board.play(3, 3, WHITE)
+    board.play(4, 5, BLACK)
+    board.play(3, 5, WHITE)
+    ai = AlphaBetaV4AI(BLACK, depth=3, candidate_limit=5)
+
+    move = ai.choose_move(board)
+
+    entries = list(ai._transposition_table.values())
+    assert board.is_empty_at(*move)
+    assert entries
+    assert {entry.flag for entry in entries} <= {TT_EXACT, TT_LOWER, TT_UPPER}
+    assert any(entry.best_move is not None for entry in entries)
+
+
+def test_v4_preferred_transposition_move_is_ordered_first():
+    board = Board(size=9)
+    board.play(4, 4, BLACK)
+    ai = AlphaBetaV4AI(BLACK, depth=2)
+
+    moves = ai._ordered_candidates_from(
+        board,
+        BLACK,
+        [(0, 0), (4, 5), (5, 4)],
+        limit=2,
+        preferred_move=(0, 0),
+    )
+
+    assert moves[0] == (0, 0)

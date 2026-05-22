@@ -79,10 +79,37 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 uv run pytest tests/test_core.py tests/test_ai.py
 ```
 
+## 2026-05-23 v4 搜索状态继续增量化
+
+背景：
+
+- make/undo 和增量 Zobrist 解决了棋盘复制与 hash 扫描，但 `v4` 递归中仍有三类重复工作：置换表只缓存未剪枝结果，候选点每层从已有棋子邻域重建，叶子评估仍扫描全盘所有线。
+- 本轮继续只优化 `alpha-beta:v4`，旧版本保留原框架，方便用 `gomoku-eval` 做 A/B 对比。
+
+改动：
+
+- `alpha-beta:v4` 改用标准置换表 entry，记录搜索深度、分数、`exact` / `lower` / `upper` bound 和当前节点最佳着法。
+- 候选排序优先尝试置换表 best move，让 alpha-beta 更早收窄窗口并触发剪枝。
+- 新增 v4 搜索状态：候选前沿在 make/undo 时按邻域计数增量更新，递归中直接从 frontier 取候选点。
+- 新增 v4 增量评估器：维护双方总棋型分和中心偏置，落子时只重算穿过落点的横、竖、两条斜线，撤子时恢复旧分数。
+
+验证：
+
+- `tests/test_ai.py` 覆盖增量 frontier 与全量候选生成一致、增量评估与全量 v4 评分一致、置换表记录 bound 与最佳着法、最佳着法排序优先，以及 v4 搜索不依赖 `Board.copy()`。
+- 在前一节相同中盘局面上轻量计时，`alpha-beta:v4(d3, candidate_limit=14)` 选择 `(9, 9)`，耗时约 `0.121s`，节点数 `197`，置换表 entry 数 `41`。
+
+验证命令：
+
+```bash
+uv run pytest tests/test_ai.py
+uv run pytest
+uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2 --jobs 2
+```
+
 ## 后续加速方向
 
 仍然值得继续优化的热路径：
 
-- 置换表目前只缓存未剪枝结果；可以记录 exact、lower bound、upper bound 和最佳着法。
-- 候选点仍按当前局面从已有棋子邻域生成；可以维护增量 frontier。
-- `v4` 全局评估仍会扫描所有行、列和对角线；后续可考虑增量局部评估。
+- 置换表目前没有容量上限、替换策略或命中率细分统计；长局可继续做缓存治理。
+- 仍没有迭代加深和时间预算；GUI/TUI 高难度响应可以继续改进。
+- 还没有开局库、常见定式或 VCF/连续冲四等专门战术搜索。

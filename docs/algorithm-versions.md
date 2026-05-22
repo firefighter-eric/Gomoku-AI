@@ -131,6 +131,10 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 - 基础五格窗口评分改为直接在 pattern 字符串上计算，减少列表切片和 `count()` 的重复开销。
 - 搜索递归只在 `v4` 路径中使用 `Board.make_move(...)` / `Board.undo_move(...)` 原地落子和撤子，不再为每个子节点复制棋盘。
 - `v4` 搜索把当前 Zobrist hash 作为递归状态传递，每次落子用单点异或增量更新，避免每个搜索节点重新扫描棋盘石子计算 hash。
+- `v4` 使用标准置换表 entry，记录 `exact`、`lower`、`upper` 三类 bound、搜索深度、分数和最佳着法。
+- 候选排序会优先尝试置换表中的最佳着法，让 alpha-beta 更早拿到可剪枝的上下界。
+- 搜索状态维护增量候选前沿，make/undo 时只更新新落子附近的候选空点，不再每层从全盘已有棋子重建候选集合。
+- 叶子评估维护双方总棋型分和中心偏置，make/undo 时只重算穿过落点的横、竖、两条斜线，避免每个叶子扫描所有行、列和对角线。
 - 默认 `alpha-beta` / `alphabeta` 别名解析到 `v4`。
 
 适用场景：
@@ -141,8 +145,8 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 
 已知边界：
 
-- make/undo 和增量 Zobrist 目前只用于 `alpha-beta:v4` 的搜索递归，`v1`、`v2`、`v3` 保持原有复制棋盘搜索框架，方便继续做版本对比。
-- 置换表仍未记录 exact/lower/upper bound，也没有迭代加深和时间预算。
+- make/undo、增量 Zobrist、标准置换表、增量候选前沿和增量局部评估目前只用于 `alpha-beta:v4` 的搜索递归，`v1`、`v2`、`v3` 保持原有复制棋盘搜索框架，方便继续做版本对比。
+- 仍没有迭代加深和时间预算，也没有开局库或专门的 VCF/连续冲四战术搜索。
 
 示例命令：
 
@@ -227,7 +231,6 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 可以考虑的后续方向：
 
 - 引入迭代加深和时间预算，让 GUI/TUI 高难度仍能保持响应。
-- 使用标准置换表 entry，记录 exact、lower bound、upper bound 和最佳着法。
-- 将候选前沿和局部评估进一步增量化，减少每层候选生成和全局评估扫描。
+- 给置换表增加容量上限、替换策略和命中率统计，避免长局缓存无限增长。
 - 增加开局库或常见定式。
 - 增加更系统的战术搜索，例如连续冲四和 VCF/VC2 类型强制胜检测。
