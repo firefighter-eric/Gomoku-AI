@@ -88,14 +88,14 @@ def test_tui_settings_preserve_algorithm_choices():
 
     assert settings.ai_algorithm == "v0"
     assert settings.black_algorithm == "v0"
-    assert settings.white_algorithm == "v4"
+    assert settings.white_algorithm == "v5"
 
 
 def _make_game(window, **overrides):
     values = {
-        "ai_algorithm": "v4",
-        "black_algorithm": "v4",
-        "white_algorithm": "v4",
+        "ai_algorithm": "v5",
+        "black_algorithm": "v5",
+        "white_algorithm": "v5",
     }
     values.update(overrides)
     return _TuiGame(

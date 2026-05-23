@@ -2,15 +2,15 @@ from gomoku_ai.core import BLACK, WHITE
 from gomoku_ai.game import GameSession, GameSettings
 
 
-def test_default_settings_use_depth_four():
+def test_default_settings_use_depth_five():
     settings = GameSettings()
 
-    assert settings.depth == 4
-    assert settings.black_depth == 4
-    assert settings.white_depth == 4
-    assert settings.ai_algorithm == "v4"
-    assert settings.black_algorithm == "v4"
-    assert settings.white_algorithm == "v4"
+    assert settings.depth == 5
+    assert settings.black_depth == 5
+    assert settings.white_depth == 5
+    assert settings.ai_algorithm == "v5"
+    assert settings.black_algorithm == "v5"
+    assert settings.white_algorithm == "v5"
 
 
 def test_human_move_updates_board_and_turn():

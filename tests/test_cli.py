@@ -65,11 +65,11 @@ def test_tui_shortcut_sets_ui_mode():
     assert args.ui == "tui"
 
 
-def test_default_depth_is_four():
+def test_default_depth_is_five():
     args = normalize_algorithm_args(build_parser().parse_args(["--mode", "human-ai"]))
 
-    assert args.depth == 4
-    assert args.ai == "v4"
+    assert args.depth == 5
+    assert args.ai == "v5"
 
 
 def test_algorithm_options_are_available():
@@ -135,7 +135,7 @@ def test_version_options_can_override_shared_registry():
         )
     )
 
-    assert args.ai == "v4"
+    assert args.ai == "v5"
     assert args.black_ai == "v1"
     assert args.white_ai == "v3"
 

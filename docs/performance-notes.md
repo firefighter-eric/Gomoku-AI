@@ -106,6 +106,58 @@ uv run pytest
 uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2 --jobs 2
 ```
 
+## 2026-05-23 v5 Rust 搜索引擎
+
+背景：
+
+- `alpha-beta:v4` 已经把 Python 侧搜索状态尽量做成 make/undo、增量 hash、增量候选前沿和增量评估，但递归搜索、候选排序和棋型扫描仍会反复穿过 Python 解释器。
+- 本轮新增 `alpha-beta:v5`，目标是保持 Python `Board`、CLI/TUI/GUI 和评测框架不变，把核心 alpha-beta 热路径迁入 Rust。
+- 当前机器的 Rust toolchain 较旧，为避免把项目构建绑定到外部 crate 下载和 PyO3 编译，首版 v5 采用无外部 crate 的 Rust 二进制引擎 `gomoku-ai-rust-engine`，由 Python 包装层通过子进程调用。
+
+改动：
+
+- 新增 `Cargo.toml`、`src/lib.rs` 和 `src/main.rs`。Rust 内核负责候选生成、一步必胜/防守、候选排序、棋型评分、Zobrist、置换表和 alpha-beta 递归。
+- 新增 `gomoku_ai/rust_backend.py`，负责查找 `target/release/gomoku-ai-rust-engine` 或 `target/debug/gomoku-ai-rust-engine`，传入棋盘快照并解析 `(row, col, nodes, cache_hits)`。
+- 新增 `AlphaBetaV5AI`。Rust 引擎存在时使用 `rust-engine` 后端；缺失时回退到 `AlphaBetaV4AI`，保证所有入口仍可用。
+- `players.py` 把默认 `alpha-beta` / `alphabeta` 解析到 `v5`，旧版本 `v1` 到 `v4` 保留为可比较版本。
+
+构建命令：
+
+```bash
+cargo build --release
+```
+
+固定局面：
+
+```python
+moves = [
+    (7, 7, BLACK), (7, 8, WHITE), (8, 7, BLACK), (6, 7, WHITE),
+    (8, 8, BLACK), (6, 8, WHITE), (7, 6, BLACK), (8, 6, WHITE),
+    (6, 6, BLACK), (9, 7, WHITE), (5, 7, BLACK), (9, 8, WHITE),
+]
+```
+
+轻量计时结果，每个版本重复 5 次，表中为平均耗时；v5 结果包含 Python 启动 Rust 子进程、传输棋盘和解析输出的开销：
+
+| 深度 | 版本 | 平均耗时 | 最快耗时 | 节点数 | cache hits | 选择落子 | 后端 |
+| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 3 | `alpha-beta:v4` | 0.1174s | 0.1164s | 197 | 0 | `(9, 9)` | Python |
+| 3 | `alpha-beta:v5` | 0.0193s | 0.0189s | 197 | 0 | `(9, 9)` | Rust engine |
+| 4 | `alpha-beta:v4` | 0.5995s | 0.5931s | 421 | 23 | `(9, 9)` | Python |
+| 4 | `alpha-beta:v5` | 0.0602s | 0.0599s | 421 | 23 | `(9, 9)` | Rust engine |
+
+在该局面上，v5 与 v4 保持相同落子、节点数和置换表命中数，depth 3 墙钟约提升 `6.1x`，depth 4 墙钟约提升 `10.0x`。
+
+验证命令：
+
+```bash
+cargo test
+uv run pytest
+uv run gomoku --help
+uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2
+uv run gomoku-eval --first random --first-version v0 --second random --second-version v0 --games 2 --size 5 --max-moves 1 --jobs 2
+```
+
 ## 后续加速方向
 
 仍然值得继续优化的热路径：
@@ -113,6 +165,7 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 - 置换表目前没有容量上限、替换策略或命中率细分统计；长局可继续做缓存治理。
 - 仍没有迭代加深和时间预算；GUI/TUI 高难度响应可以继续改进。
 - 还没有开局库、常见定式或 VCF/连续冲四等专门战术搜索。
+- v5 当前是一次 `choose_move(...)` 调用一个 Rust 子进程；如果后续低深度响应也要进一步优化，可以考虑 PyO3 扩展、常驻 Rust worker 或 root-level 并行。
 
 ### 加速库选型
 
@@ -123,7 +176,7 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 1. Numba：优先做小范围原型。Numba 适合 NumPy 数组、数值函数和循环，可以把函数 JIT 编译成机器码。若要在本项目中发挥作用，需要先把棋盘从嵌套 Python list 改成 `int8`/`int16` 一维或二维数组，并把评分、胜负检测、候选生成等热函数改成 `@njit(cache=True)` 能进入 nopython 模式的数值内核。它的优点是原型速度快；风险是当前 dataclass、Python 对象、字符串 pattern 扫描和字典置换表需要重构。参考：[Numba 5 minute guide](https://numba.readthedocs.io/en/stable/user/5minguide.html)。
 2. Cython：适合把稳定的热函数迁到编译扩展里。Cython 可以给 Python 代码加静态类型并编译成 C 扩展，适合 `_score_line_v4`、候选点评分、胜负检测、局部评估和搜索内核这类递归/分支/小循环密集代码。它比 Numba 更工程化，维护成本略高，但对 alpha-beta 这种控制流复杂的代码通常更可控。参考：[Cython](https://cython.org/)。
 3. mypyc：适合低侵入实验。mypyc 能把带类型标注的 Python 模块编译成 C 扩展，现有代码如果进一步补类型，可能用较小改动换取中等收益。风险是项目仍处于较早阶段，复杂动态特性、对象模型和调试边界需要单独验证。参考：[mypyc introduction](https://mypyc.readthedocs.io/en/latest/introduction.html)。
-4. Rust + PyO3/maturin：适合长期高性能版本。可以把棋盘表示、候选生成、评分、置换表和 alpha-beta 搜索核心迁成 Rust 原生模块，Python 只保留 CLI/TUI/GUI 和统一玩家接口。它的性能上限最高，也最利于后续做线程并行或更细的内存控制；代价是开发成本最大，适合作为 `alpha-beta:v5` 或单独 `rust-alpha-beta` 家族规划。参考：[PyO3](https://docs.rs/pyo3/latest/pyo3/) 和 [maturin](https://www.maturin.rs/)。
+4. Rust：适合长期高性能版本。当前已经以无外部 crate 的 Rust 二进制引擎落地为 `alpha-beta:v5`，把棋盘表示、候选生成、评分、置换表和 alpha-beta 搜索核心迁成 Rust 原生逻辑，Python 只保留 CLI/TUI/GUI、统一玩家接口和 fallback。后续如果要减少子进程开销，可以再评估 PyO3/maturin 扩展。参考：[PyO3](https://docs.rs/pyo3/latest/pyo3/) 和 [maturin](https://www.maturin.rs/)。
 5. PyPy：可作为纯 Python 对照实验，但不是当前首选。PyPy 的 JIT 对纯 Python 算法代码可能有收益，但需要验证 Python 版本、uv 项目环境、Pygame/C 扩展兼容性和实际搜索热路径表现。当前项目要求 Python `>=3.12`，因此不要把 PyPy 作为默认路线。
 
 不优先的方向：
@@ -137,7 +190,7 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 2. 做 Numba 原型，只迁一个最热且容易数值化的函数族，例如线型评分和胜负检测。
 3. 如果 Numba 原型收益稳定，再考虑把棋盘表示抽象为可选数组后端。
 4. 如果 Numba 改造过重或 nopython 难以稳定通过，转向 Cython 热函数模块。
-5. 如果目标是长期高性能和更深搜索，再规划 Rust/PyO3 版本，并保持旧 Python 版本可对照评测。
+5. 如果目标是进一步降低 v5 低深度调用开销，再规划 PyO3 扩展或常驻 Rust worker，并保持旧 Python 版本可对照评测。
 
 ### 单手棋并行搜索
 

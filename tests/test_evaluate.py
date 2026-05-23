@@ -79,6 +79,8 @@ def test_parser_defaults_to_eight_games_for_formal_comparison():
 
     assert DEFAULT_EVALUATION_GAMES == 8
     assert args.games == 8
+    assert args.first_depth == 5
+    assert args.second_depth == 5
     assert DEFAULT_EVALUATION_JOBS == 0
     assert args.jobs == 0
 

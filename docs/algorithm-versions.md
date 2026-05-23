@@ -12,9 +12,10 @@
 | `alpha-beta` | `v1` | 历史复刻版 | 参考 `firefighter-eric/TicTacToe-AI` 思路搭建五子棋 AI 基础结构，用于和后续版本做性能/棋力对比。 |
 | `alpha-beta` | `v2` | 速度优化版 | 在第一版基础上做速度优化，适合作为稳定对照组。 |
 | `alpha-beta` | `v3` | 棋型增强版 | 在第二版基础上加强棋型评分和关键候选保留，用于棋力改进对比。 |
-| `alpha-beta` | `v4` | 当前默认 | 在第三版基础上整合候选分析复用和字符串窗口评分，用于性能优化对比。 |
+| `alpha-beta` | `v4` | Python 性能复用版 | 在第三版基础上整合候选分析复用、make/undo、增量评估和置换表，用于性能优化对比。 |
+| `alpha-beta` | `v5` | 当前默认 | 使用 Rust 搜索引擎执行核心 alpha-beta 热路径，用于大幅降低深层搜索耗时。 |
 
-当前默认注册名是 `alpha-beta`，默认版本是 `v4`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta-v3`、`alphabeta-v4` 等仍作为兼容别名保留；无版本的 `alphabeta` / `alpha-beta` 会解析到当前默认版本。
+当前默认注册名是 `alpha-beta`，默认版本是 `v5`，默认搜索深度是 `5`。注册名描述算法家族，版本号描述同一算法家族内的迭代；不要把 `v0`、`v1` 这样的版本号当成注册名。旧名称 `alphabeta-v1`、`alphabeta-v3`、`alphabeta-v4` 等仍作为兼容别名保留；无版本的 `alphabeta` / `alpha-beta` 会解析到当前默认版本。
 
 ## 第一版：基础 alpha-beta
 
@@ -85,7 +86,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v2 --white-ai r
 
 版本：`v3`
 
-第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较；当前主要作为棋型增强基线，默认 AI 已切换到 `alpha-beta:v4`。
+第三版来自算法全面检查后的改进。它保留第二版作为 `v2`，新增 `v3` 用于并排比较；当前主要作为棋型增强基线，默认 AI 已切换到 `alpha-beta:v5`。
 
 核心改进：
 
@@ -135,11 +136,11 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 - 候选排序会优先尝试置换表中的最佳着法，让 alpha-beta 更早拿到可剪枝的上下界。
 - 搜索状态维护增量候选前沿，make/undo 时只更新新落子附近的候选空点，不再每层从全盘已有棋子重建候选集合。
 - 叶子评估维护双方总棋型分和中心偏置，make/undo 时只重算穿过落点的横、竖、两条斜线，避免每个叶子扫描所有行、列和对角线。
-- 默认 `alpha-beta` / `alphabeta` 别名解析到 `v4`。
+- `v4` 作为最后一个纯 Python 性能优化版本保留，供 `v5` fallback 和性能对比使用。
 
 适用场景：
 
-- 当前默认人机对战、TUI、GUI 和 AI 对 AI 算法。
+- 无 Rust 引擎时的稳定 fallback。
 - 和 `v3` 做同棋型语义下的性能对比。
 - 和 `v1` 做正式 8 局基线赛，记录第四版综合表现。
 
@@ -153,6 +154,51 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v3 --white-ai a
 ```bash
 uv run gomoku --mode human-ai --ai alpha-beta --ai-version v4 --depth 4
 uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v4 --white-ai alpha-beta --white-version v3 --black-depth 4 --white-depth 4
+```
+
+## 第五版：Rust 加速版 alpha-beta
+
+注册名：`alpha-beta`
+
+版本：`v5`
+
+第五版在 Python 层保留 `choose_move(board)` 和统一玩家工厂，把搜索核心迁入 Rust 二进制引擎 `gomoku-ai-rust-engine`。Rust 侧不引入外部 crate，构建命令是标准 Cargo：
+
+```bash
+cargo build --release
+```
+
+构建后，Python 包装层会自动查找 `target/release/gomoku-ai-rust-engine`；如果没有构建该引擎，`AlphaBetaV5AI` 会回退到 `AlphaBetaV4AI`，因此普通 CLI、TUI、GUI、AI 对 AI 和 `gomoku-eval` 不会因为缺少 Rust 构建产物而失效。
+
+核心改进：
+
+- Rust 引擎接收 Python `Board.grid` 的扁平快照，外部棋盘不会被 Rust 搜索修改。
+- 候选生成、一步必胜/防守、候选排序、棋型评分、Zobrist hash、置换表和 alpha-beta 递归都在 Rust 内执行。
+- 仍沿用 `v4` 的候选宽度、深层候选收窄、活四/冲四/活三/双四/四三/双三等棋型权重和确定性 tie-break。
+- Python 层只负责算法注册、数据转换、Rust 进程调用、统计值回填和 fallback。
+- 默认 `alpha-beta` / `alphabeta` 别名解析到 `v5`。
+
+性能记录：
+
+在 `docs/performance-notes.md` 中记录的固定 12 手中盘局面上，`v5` 与 `v4` 选择相同落子 `(9, 9)`，搜索节点数一致；包含 Rust 进程启动和数据传输开销后，depth 3 平均耗时从 `0.1174s` 降到 `0.0193s`，depth 4 平均耗时从 `0.5995s` 降到 `0.0602s`。
+
+适用场景：
+
+- 当前默认人机对战、TUI、GUI 和 AI 对 AI 算法。
+- 高深度搜索或中后盘候选点较多时优先使用。
+- 和 `v4` 做同搜索语义下的 Python/Rust 性能对比。
+
+已知边界：
+
+- 当前 v5 使用一次 `choose_move(...)` 调起一次 Rust 引擎进程的方式，工程边界清晰但仍有进程启动开销；深度较低或空棋盘首手时收益不明显。
+- 首版 Rust 引擎没有做跨进程常驻服务、共享置换表、时间预算或迭代加深。
+- Rust 引擎缺失时会回退到 `v4`，此时功能可用但没有 Rust 加速。
+
+示例命令：
+
+```bash
+uv run gomoku --mode human-ai --ai alpha-beta --ai-version v5 --depth 5
+uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v5 --white-ai alpha-beta --white-version v4 --black-depth 5 --white-depth 5
 ```
 
 ## 随机基线
@@ -177,7 +223,7 @@ uv run gomoku --mode ai-ai --black-ai alpha-beta --black-version v4 --white-ai a
 uv run gomoku --help
 ```
 
-正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 分别对 `alpha-beta:v1`；结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+正式算法强弱记录使用固定规约：`alpha-beta:v1` 作为基线，每个待比较版本与它比赛 8 场，默认交替先后手。当前正式记录只比较 alpha-beta 家族版本；已有 d=5 正式记录覆盖 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 分别对 `alpha-beta:v1`，新增 `alpha-beta:v5` 后下一轮正式基线也应纳入 v5。结果写入 [evaluation-results.md](evaluation-results.md)。`random:v0` 只作为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
 当前 d=5 基线结果：`alpha-beta:v2(d5)`、`alpha-beta:v3(d5)`、`alpha-beta:v4(d5)` 对 `alpha-beta:v1(d5)` 都是 4:4；其中 `v4(d5)` 墙钟耗时为 443.05s，完整逐局明细和墙钟耗时见 [evaluation-results.md](evaluation-results.md)。
 
@@ -197,6 +243,12 @@ uv run gomoku-eval --first alpha-beta --first-version v3 --second alpha-beta --s
 
 ```bash
 uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
+```
+
+第五版对第一版：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --second-version v1 --first-depth 3 --second-depth 3 --games 8
 ```
 
 第四版对第三版属于探索性横向对比，不替代基线记录：
@@ -227,7 +279,7 @@ alpha-beta pruning 是 minimax 的剪枝优化。它维护两个边界：`alpha`
 alpha-beta = minimax + 剪枝
 ```
 
-当前 `alpha-beta:v1` 到 `alpha-beta:v4` 都属于这条 minimax 系路线。它们的核心决策语义一致，差异主要体现在候选点生成、棋型评分、Zobrist 缓存、置换表、make/undo、增量候选前沿和增量评估等工程优化上。
+当前 `alpha-beta:v1` 到 `alpha-beta:v5` 都属于这条 minimax 系路线。它们的核心决策语义一致，差异主要体现在候选点生成、棋型评分、Zobrist 缓存、置换表、make/undo、增量候选前沿、增量评估和 Rust 编译型搜索内核等工程优化上。
 
 搜索资料中确实存在分布式或并行版本，常见名称不是单纯的 “distributed minimax”，而是 parallel/distributed game-tree search 或 parallel alpha-beta。代表方向包括：
 

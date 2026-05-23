@@ -6,6 +6,7 @@ from gomoku_ai.ai import (
     AlphaBetaV1AI,
     AlphaBetaV3AI,
     AlphaBetaV4AI,
+    AlphaBetaV5AI,
     TT_EXACT,
     TT_LOWER,
     TT_UPPER,
@@ -298,3 +299,31 @@ def test_v4_preferred_transposition_move_is_ordered_first():
     )
 
     assert moves[0] == (0, 0)
+
+
+def test_v5_chooses_legal_move_without_mutating_board():
+    board = Board(size=9)
+    board.play(4, 4, BLACK)
+    board.play(3, 3, WHITE)
+    board.play(4, 5, BLACK)
+    board.play(3, 5, WHITE)
+    grid = [row[:] for row in board.grid]
+    last_move = board.last_move
+    ai = AlphaBetaV5AI(BLACK, depth=2, candidate_limit=4)
+
+    move = ai.choose_move(board)
+
+    assert board.grid == grid
+    assert board.last_move == last_move
+    assert board.is_empty_at(*move)
+    assert ai.backend in {"rust-engine", "python-v4-fallback"}
+
+
+def test_v5_finds_one_move_win():
+    board = Board(size=15)
+    for col in range(4):
+        board.play(7, col + 3, BLACK)
+    board.play(6, 6, WHITE)
+    ai = AlphaBetaV5AI(BLACK, depth=2)
+
+    assert ai.choose_move(board) in {(7, 2), (7, 7)}

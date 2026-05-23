@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from math import inf
 
 from gomoku_ai.core import BLACK, DRAW, EMPTY, WHITE, Board, MoveUndo, opponent
+from gomoku_ai.rust_backend import choose_move_v5 as _rust_choose_move_v5
+from gomoku_ai.rust_backend import rust_backend_name, rust_backend_available
 
 WIN_SCORE = 10_000_000
 OPEN_FOUR = 1_000_000
@@ -260,7 +262,7 @@ class AlphaBetaAI:
     def __init__(
         self,
         stone: int,
-        depth: int = 4,
+        depth: int = 5,
         candidate_radius: int = 2,
         candidate_limit: int = 18,
         seed: int = 20260521,
@@ -836,6 +838,48 @@ class AlphaBetaV4AI(AlphaBetaV3AI):
         current = self._transposition_table.get(key)
         if current is None or entry.depth >= current.depth:
             self._transposition_table[key] = entry
+
+
+class AlphaBetaV5AI(AlphaBetaV4AI):
+    """V5 alpha-beta variant that delegates the search core to the Rust engine."""
+
+    name = "v5"
+
+    def __init__(
+        self,
+        stone: int,
+        depth: int = 5,
+        candidate_radius: int = 2,
+        candidate_limit: int = 18,
+        seed: int = 20260521,
+    ) -> None:
+        super().__init__(
+            stone,
+            depth=depth,
+            candidate_radius=candidate_radius,
+            candidate_limit=candidate_limit,
+            seed=seed,
+        )
+        self.backend = rust_backend_name()
+
+    def choose_move(self, board: Board) -> tuple[int, int]:
+        if rust_backend_available():
+            row, col, nodes, cache_hits = _rust_choose_move_v5(
+                board,
+                self.stone,
+                depth=self.depth,
+                candidate_radius=self.candidate_radius,
+                candidate_limit=self.candidate_limit,
+                seed=self.seed,
+            )
+            if not board.is_empty_at(row, col):
+                raise ValueError(f"Rust engine returned an occupied move: ({row}, {col})")
+            self.stats = SearchStats(nodes=nodes, cache_hits=cache_hits)
+            self.backend = "rust-engine"
+            return row, col
+
+        self.backend = "python-v4-fallback"
+        return super().choose_move(board)
 
 
 def generate_candidate_moves(board: Board, radius: int = 2) -> list[tuple[int, int]]:

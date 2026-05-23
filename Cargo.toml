@@ -1,0 +1,14 @@
+[package]
+name = "gomoku-ai-rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "gomoku_ai_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gomoku-ai-rust-engine"
+path = "src/main.rs"
+
+[dependencies]

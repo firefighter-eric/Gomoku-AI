@@ -4,7 +4,7 @@
 
 `gomoku-eval` 默认 `--jobs 0`，表示每局比赛使用一个独立进程并行运行；如果某次记录使用了 `--jobs 1` 或其他进程数，需要在运行环境中注明。
 
-当前每轮正式基线赛只跑 alpha-beta 家族版本，也就是 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 对 `alpha-beta:v1`。`random:v0` 只保留为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
+当前每轮正式基线赛只跑 alpha-beta 家族版本。已有正式记录覆盖 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 对 `alpha-beta:v1`；新增 `alpha-beta:v5` 后，下一轮正式基线也应纳入 v5。`random:v0` 只保留为冒烟测试或历史最低参照，不再参与每轮正式基线赛。
 
 ## 2026-05-22 基线评测
 
@@ -135,9 +135,9 @@ Average moves: 19.0
 - 截断：无
 - 并行：默认 `--jobs 0`，每局一个独立进程
 - 搜索深度：`alpha-beta` 版本统一使用 depth 5
-- 范围：只记录 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 对 `alpha-beta:v1`；`random:v0` 不纳入本轮正式记录
+- 范围：只记录 `alpha-beta:v2`、`alpha-beta:v3`、`alpha-beta:v4` 对 `alpha-beta:v1`；`random:v0` 不纳入本轮正式记录；`alpha-beta:v5` 是后续新增版本，本节尚未包含它的 8 局正式基线
 
-注意：本节中的 `alpha-beta:v3(d5)` 记录来自 `v3` 增加双三、四三、双四显式加权之前；`alpha-beta:v4(d5)` 是当前默认算法的正式 d=5 基线记录，包含这些棋型增强和候选分析复用。
+注意：本节中的 `alpha-beta:v3(d5)` 记录来自 `v3` 增加双三、四三、双四显式加权之前；`alpha-beta:v4(d5)` 是 v5 之前默认算法的正式 d=5 基线记录，包含这些棋型增强和候选分析复用。
 
 汇总：
 
@@ -255,10 +255,49 @@ sys 24.06
 | 7 | `alpha-beta:v4(d5)` | `alpha-beta:v1(d5)` | `alpha-beta:v4(d5)` 执黑 | 27 |
 | 8 | `alpha-beta:v1(d5)` | `alpha-beta:v4(d5)` | `alpha-beta:v1(d5)` 执黑 | 33 |
 
+## 2026-05-23 v5 冒烟与性能记录
+
+本节不是正式强弱基线，只记录 v5 接入后的功能冒烟和固定局面性能基准。正式强弱记录仍需按 8 局、完整终局、`alpha-beta:v1` 固定基线另跑。
+
+Rust 引擎构建：
+
+```bash
+cargo build --release
+```
+
+冒烟命令：
+
+```bash
+uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2
+uv run gomoku-eval --first random --first-version v0 --second random --second-version v0 --games 2 --size 5 --max-moves 1 --jobs 2
+```
+
+冒烟结果：
+
+```text
+Comparison: alpha-beta:v5(d1) vs alpha-beta:v1(d1)
+Games: 2
+alpha-beta:v5(d1) wins: 0
+alpha-beta:v1(d1) wins: 0
+Draws: 0
+Stopped: 2
+Average moves: 2.0
+
+Comparison: random:v0 vs random:v0
+Games: 2
+random:v0 wins: 0
+random:v0 wins: 0
+Draws: 0
+Stopped: 2
+Average moves: 1.0
+```
+
+固定 12 手中盘局面的性能对比见 [performance-notes.md](performance-notes.md)：`alpha-beta:v5` 与 `alpha-beta:v4` 同样选择 `(9, 9)`，depth 3 平均耗时 `0.0193s` 对 `0.1174s`，depth 4 平均耗时 `0.0602s` 对 `0.5995s`。
+
 ## 记录约定
 
 - 正式版本对比优先使用 `alpha-beta:v1` 做基线。
-- 每个 alpha-beta 待比较版本固定跑 8 场；当前正式待测版本包括 `v2`、`v3`、`v4`。
+- 每个 alpha-beta 待比较版本固定跑 8 场；当前正式待测版本包括 `v2`、`v3`、`v4` 和后续新增的 `v5`。
 - `random:v0` 不再参与每轮正式基线赛；如需随机最低参照，需要在记录中单独标注。
 - 默认交替先后手；如果使用 `--no-alternate-colors`，必须在记录中单独注明。
 - 默认每局一个独立进程并行运行；如果使用非默认 `--jobs`，必须在记录中单独注明。
