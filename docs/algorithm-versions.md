@@ -213,6 +213,34 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 
 `gomoku-eval` 默认交替先后手，默认场数为 8，默认 `--jobs 0` 表示每局比赛一个独立进程并行运行。输出双方胜局、平局、提前停止局数、平均手数和每局明细。用 `--no-alternate-colors` 可以固定第一方执黑；用 `--jobs 1` 可以改回串行评测。
 
+## Minimax 与并行化背景
+
+本项目中的 `alpha-beta` 可以理解为 minimax 搜索的剪枝版本。
+
+minimax 是双人零和、轮流行动、完全信息游戏里的基础搜索思想。轮到己方时，搜索会选择让局面评分最大的走法，也就是 `max`；轮到对手时，假设对手同样理性，会选择让己方评分最小的走法，也就是 `min`。搜索到固定深度或终局后，算法用局面评分函数给叶子节点估分，再把这些分数一层层回传到当前局面，最后选出当前能保证的最好落子。
+
+alpha-beta pruning 是 minimax 的剪枝优化。它维护两个边界：`alpha` 表示己方当前已经能保证拿到的最好下界，`beta` 表示对手当前能把己方压到的最好上界。当搜索发现 `alpha >= beta` 时，说明这个分支继续搜下去也不会改变上层选择，可以提前跳过。
+
+在候选走法、搜索深度和评分函数完全相同的前提下，alpha-beta 与普通 minimax 会得到相同的最终选择；区别是 alpha-beta 通常会少搜索大量节点。也就是说：
+
+```text
+alpha-beta = minimax + 剪枝
+```
+
+当前 `alpha-beta:v1` 到 `alpha-beta:v4` 都属于这条 minimax 系路线。它们的核心决策语义一致，差异主要体现在候选点生成、棋型评分、Zobrist 缓存、置换表、make/undo、增量候选前沿和增量评估等工程优化上。
+
+搜索资料中确实存在分布式或并行版本，常见名称不是单纯的 “distributed minimax”，而是 parallel/distributed game-tree search 或 parallel alpha-beta。代表方向包括：
+
+- Distributed Tree Search：把树拆给多个处理器搜索，并把 alpha-beta 应用到 Othello 搜索中；典型难点是并行分支可能搜索到本可被串行边界剪掉的节点。参考：[Ferguson 和 Korf, 1988](https://cdn.aaai.org/AAAI/1988/AAAI88-023.pdf)。
+- Young Brothers Wait Concept（YBWC）：先搜索最有希望的第一个子节点，拿到更有用的边界后再并行搜索兄弟节点，降低无效搜索。参考：[Feldmann 等, 1989](https://journals.sagepub.com/doi/10.3233/ICG-1989-12203)。
+- ABDADA：明确以 “Distributed Minimax-Search” 命名的松同步分布式 alpha-beta/minimax 方法，通过置换表信息控制并行搜索。参考：[Weill, 1996](https://journals.sagepub.com/doi/10.3233/ICG-1996-19102)。
+- APHID：异步并行 alpha-beta/game-tree search，适合在已有顺序搜索程序上较低侵入地增加并行搜索。参考：[Brockington 和 Schaeffer, 2000](https://www.sciencedirect.com/science/article/abs/pii/S0743731599916003)。
+- TDSAB：把 transposition table driven scheduling 扩展到双人博弈搜索，把工作调度和置换表位置绑定，减少分布式置换表访问成本。参考：[Kishimoto 和 Schaeffer, 2002](https://webdocs.cs.ualberta.ca/~jonathan/publications/parrallel_computing_publications/icpp02kishi.pdf)。
+
+当前仓库已经在 `gomoku-eval` 层面做了并行：`--jobs 0` 表示每局比赛一个独立进程。但单手棋的 `choose_move(board)` 仍是单进程内搜索。下一步如果要加速单手棋，优先考虑 root-level parallel alpha-beta：主进程生成顶层候选点，把候选点子树分给多个 worker 搜索，再汇总最佳分数和落子。
+
+这一路线比完整 ABDADA、APHID 或 TDSAB 更适合当前 Python 代码，也更容易保持确定性和测试边界。首版不共享 worker 之间的置换表，只把并行作为可选参数；等有基准收益后，再评估共享置换表、异步搜索或更复杂的分布式调度。
+
 ## 新增算法版本的约定
 
 新增算法时遵循下面的路径：
@@ -232,5 +260,6 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 
 - 引入迭代加深和时间预算，让 GUI/TUI 高难度仍能保持响应。
 - 给置换表增加容量上限、替换策略和命中率统计，避免长局缓存无限增长。
+- 增加可选的 root-level 并行搜索，让单手棋在高深度时可使用多个 CPU 进程搜索顶层候选点。
 - 增加开局库或常见定式。
 - 增加更系统的战术搜索，例如连续冲四和 VCF/VC2 类型强制胜检测。

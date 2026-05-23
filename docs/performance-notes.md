@@ -113,3 +113,44 @@ uv run gomoku-eval --first alpha-beta --first-version v4 --second alpha-beta --s
 - 置换表目前没有容量上限、替换策略或命中率细分统计；长局可继续做缓存治理。
 - 仍没有迭代加深和时间预算；GUI/TUI 高难度响应可以继续改进。
 - 还没有开局库、常见定式或 VCF/连续冲四等专门战术搜索。
+
+### 加速库选型
+
+除多进程或多线程并行外，还可以通过编译型加速库降低 Python 解释器开销。当前 `alpha-beta:v4` 的热路径主要是递归搜索、候选点评分、棋型扫描、胜负检测和 make/undo 状态维护；这些逻辑包含大量小循环、分支和整数操作，不是普通大矩阵计算，所以库的适配性比“名义速度”更重要。
+
+优先级建议：
+
+1. Numba：优先做小范围原型。Numba 适合 NumPy 数组、数值函数和循环，可以把函数 JIT 编译成机器码。若要在本项目中发挥作用，需要先把棋盘从嵌套 Python list 改成 `int8`/`int16` 一维或二维数组，并把评分、胜负检测、候选生成等热函数改成 `@njit(cache=True)` 能进入 nopython 模式的数值内核。它的优点是原型速度快；风险是当前 dataclass、Python 对象、字符串 pattern 扫描和字典置换表需要重构。参考：[Numba 5 minute guide](https://numba.readthedocs.io/en/stable/user/5minguide.html)。
+2. Cython：适合把稳定的热函数迁到编译扩展里。Cython 可以给 Python 代码加静态类型并编译成 C 扩展，适合 `_score_line_v4`、候选点评分、胜负检测、局部评估和搜索内核这类递归/分支/小循环密集代码。它比 Numba 更工程化，维护成本略高，但对 alpha-beta 这种控制流复杂的代码通常更可控。参考：[Cython](https://cython.org/)。
+3. mypyc：适合低侵入实验。mypyc 能把带类型标注的 Python 模块编译成 C 扩展，现有代码如果进一步补类型，可能用较小改动换取中等收益。风险是项目仍处于较早阶段，复杂动态特性、对象模型和调试边界需要单独验证。参考：[mypyc introduction](https://mypyc.readthedocs.io/en/latest/introduction.html)。
+4. Rust + PyO3/maturin：适合长期高性能版本。可以把棋盘表示、候选生成、评分、置换表和 alpha-beta 搜索核心迁成 Rust 原生模块，Python 只保留 CLI/TUI/GUI 和统一玩家接口。它的性能上限最高，也最利于后续做线程并行或更细的内存控制；代价是开发成本最大，适合作为 `alpha-beta:v5` 或单独 `rust-alpha-beta` 家族规划。参考：[PyO3](https://docs.rs/pyo3/latest/pyo3/) 和 [maturin](https://www.maturin.rs/)。
+5. PyPy：可作为纯 Python 对照实验，但不是当前首选。PyPy 的 JIT 对纯 Python 算法代码可能有收益，但需要验证 Python 版本、uv 项目环境、Pygame/C 扩展兼容性和实际搜索热路径表现。当前项目要求 Python `>=3.12`，因此不要把 PyPy 作为默认路线。
+
+不优先的方向：
+
+- 直接 NumPy 化整套搜索：NumPy 擅长大数组批量向量化，五子棋 alpha-beta 则是小棋盘、递归分支和频繁剪枝。可以用 NumPy 作为 Numba 内核的数据容器，但不宜指望简单替换 list 后自动大幅加速。
+- GPU/JAX/CuPy：当前启发式 alpha-beta 不是大批量矩阵计算，GPU 调度和数据搬运开销大概率抵消收益。除非后续引入神经网络评估器、批量 MCTS 或一次性批量评估大量局面，否则不作为近期方向。
+
+落地顺序建议：
+
+1. 先用 `cProfile` 或 `pyinstrument` 锁定当前 d=4/d=5 热点，建立固定局面基准。
+2. 做 Numba 原型，只迁一个最热且容易数值化的函数族，例如线型评分和胜负检测。
+3. 如果 Numba 原型收益稳定，再考虑把棋盘表示抽象为可选数组后端。
+4. 如果 Numba 改造过重或 nopython 难以稳定通过，转向 Cython 热函数模块。
+5. 如果目标是长期高性能和更深搜索，再规划 Rust/PyO3 版本，并保持旧 Python 版本可对照评测。
+
+### 单手棋并行搜索
+
+当前并行能力只存在于评测层：`gomoku-eval --jobs 0` 会把每一局比赛放到独立进程中运行。实际对局中，`AlphaBetaV4AI.choose_move(board)` 仍在单进程内串行搜索所有顶层候选点。
+
+minimax / alpha-beta 的并行化已有成熟研究路线，包括 Distributed Tree Search、Young Brothers Wait Concept、ABDADA、APHID 和 TDSAB。它们的共同问题是：并行搜索过早展开兄弟分支时，可能浪费本来会被 alpha-beta 边界剪掉的工作；如果要跨进程或跨机器共享置换表，还会引入通信、同步和重复搜索控制成本。
+
+对当前 Python 实现，优先级最高的落地方案是 root-level parallel alpha-beta：
+
+1. 主进程按现有逻辑生成、排序和裁剪顶层候选点。
+2. 先串行搜索第一个候选点，尽快得到较好的初始 `alpha`。
+3. 将剩余候选点按任务分发给多个 worker，每个 worker 使用独立 AI 实例搜索对应子树。
+4. 主进程收集 `(score, move)`，按现有候选顺序做确定性 tie-break。
+5. 首版不共享置换表，只把并行作为可选参数，例如后续可设计为 `search_jobs=1` 默认关闭。
+
+这个方案实现成本低，适合验证深度 5 以上或中后盘候选点较多时的墙钟收益。它不会替代现有 `gomoku-eval --jobs`：前者加速单手棋搜索，后者加速多局评测批量运行。若 root-level 并行收益稳定，再考虑更复杂的 YBWC 式延迟并行、共享/分片置换表或异步搜索。
