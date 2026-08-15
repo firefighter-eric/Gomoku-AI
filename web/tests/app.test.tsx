@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import App from "../src/App";
@@ -6,6 +7,24 @@ import App from "../src/App";
 describe("WebUI", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it("persists the sound preference", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    const soundToggle = screen.getByRole("button", { name: "关闭音效" });
+    expect(soundToggle).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(soundToggle);
+    expect(screen.getByRole("button", { name: "开启音效" })).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => {
+      const saved = JSON.parse(localStorage.getItem("gomoku-ai.web.settings.v1") ?? "null");
+      expect(saved.soundEnabled).toBe(false);
+    });
+
+    view.unmount();
+    render(<App />);
+    expect(screen.getByRole("button", { name: "开启音效" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("renders the playable board and settings", () => {

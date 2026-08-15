@@ -52,6 +52,17 @@ test("desktop labels remain fully visible at a compact window size", async ({ pa
   expect(layout.controlsOverflow).toBe("visible");
 });
 
+test("sound can be disabled and remains disabled after reload", async ({ page }) => {
+  await page.goto("/");
+  const soundToggle = page.getByRole("button", { name: "关闭音效" });
+  await expect(soundToggle).toHaveAttribute("aria-pressed", "true");
+  await soundToggle.click();
+  await expect(page.getByRole("button", { name: "开启音效" })).toHaveAttribute("aria-pressed", "false");
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "开启音效" })).toHaveAttribute("aria-pressed", "false");
+});
+
 test("two local players can alternate turns", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "双人对战" }).click();

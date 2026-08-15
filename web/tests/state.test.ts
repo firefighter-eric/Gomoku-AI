@@ -74,4 +74,10 @@ describe("game state", () => {
     expect(state.moves).toHaveLength(0);
     expect(state.current).toBe(BLACK);
   });
+
+  it("keeps the sound preference across game restarts", () => {
+    let state = gameReducer(createGameState(), { type: "sound-enabled", value: false });
+    state = gameReducer(state, { type: "restart" });
+    expect(state.soundEnabled).toBe(false);
+  });
 });
