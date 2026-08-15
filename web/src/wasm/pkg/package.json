@@ -1,0 +1,15 @@
+{
+  "name": "gomoku-ai-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "gomoku_ai_wasm_bg.wasm",
+    "gomoku_ai_wasm.js",
+    "gomoku_ai_wasm.d.ts"
+  ],
+  "main": "gomoku_ai_wasm.js",
+  "types": "gomoku_ai_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

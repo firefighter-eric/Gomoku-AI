@@ -1,6 +1,6 @@
 # Gomoku-AI
 
-`Gomoku-AI` 是一个使用 Python 3.12 和 uv 构建的五子棋项目，支持人机对战、AI 对 AI 自动对战、可用方向键和鼠标操作的终端 TUI，以及 Pygame 图形界面。
+`Gomoku-AI` 是一个五子棋项目，支持浏览器 WebUI、普通 CLI、终端 TUI 和 Pygame GUI。WebUI 提供人机对战、同一设备双人对战和 AI 对 AI；本地应用侧使用 Python 3.12 + uv，浏览器侧使用 React + TypeScript + Vite，并通过 WebAssembly 在本地运行 Rust `alpha-beta:v5` 搜索引擎。
 
 项目参考 [firefighter-eric/TicTacToe-AI](https://github.com/firefighter-eric/TicTacToe-AI) 的算法思路：棋盘状态、胜负检测、启发式评分、Zobrist 缓存、邻域候选点生成、alpha-beta 搜索。当前实现没有照搬参考项目源码，而是拆成更清晰的核心逻辑、AI、共享对局会话和界面层，方便后续继续扩展。
 
@@ -8,7 +8,9 @@
 
 - 15x15 自由规则五子棋。
 - 支持人机对战。
+- WebUI 支持同一设备上的双人轮流对战。
 - 支持两个 AI 自动对战。
+- 支持响应式 WebUI，可直接部署到 Vercel；对局计算全部在浏览器本地完成。
 - 支持普通命令行坐标输入。
 - 支持 TUI 模式：方向键选格、回车/空格落子、终端支持时可鼠标点击落子。
 - 支持 Pygame GUI 模式：鼠标点击棋盘落子，右侧面板显示状态、模式、难度、黑白和结算操作。
@@ -21,6 +23,8 @@
 - Python `>=3.12`
 - uv
 - Rust/Cargo：用于构建 `alpha-beta:v5` 的 Rust 搜索引擎。
+- Node.js `22.12+` 或 `24+`、npm：用于 WebUI 开发和测试。
+- `wasm-pack`：仅在从 Rust 源码重新生成浏览器 WASM 时需要。
 - Pygame，由项目依赖自动安装。
 
 本项目已经配置 `pyproject.toml`，常用命令都可以通过 `uv run ...` 执行。
@@ -32,6 +36,33 @@ cargo build --release
 ```
 
 构建后 Python 会自动使用 `target/release/gomoku-ai-rust-engine`。如果没有构建 Rust 引擎，`alpha-beta:v5` 会回退到 Python `alpha-beta:v4`，保证 CLI、TUI、GUI 和评测入口仍然可用。
+
+## WebUI
+
+在线体验：[gomoku-ai-brown.vercel.app](https://gomoku-ai-brown.vercel.app/)
+
+WebUI 包含三种模式：
+
+- 人机对战：选择执黑或执白，AI 使用浏览器内的 Rust WebAssembly 引擎。
+- 双人对战：两位玩家在同一台设备上轮流落子，不需要服务器或账号。
+- AI 对 AI：在浏览器中观看双方自动对弈。
+
+本地启动：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+完整生产构建会先从 `web-wasm/` 重新生成 WASM：
+
+```bash
+cd web
+npm run build
+```
+
+Vercel 项目的 Root Directory 设为 `web`。仓库提交了经过验证的生产 WASM，Vercel 使用 `npm run build:web` 构建，因此线上构建不需要临时安装 Rust 工具链。架构、测试和部署细节见 [docs/webui.md](docs/webui.md)。
 
 ## 启动游戏
 
@@ -302,9 +333,16 @@ tests/
   test_gui.py
 docs/
   algorithm-versions.md # 不同算法版本的详细说明和对比命令
+  webui.md # WebUI 架构、本地开发、测试与 Vercel 部署
 src/
   lib.rs    # Rust v5 搜索内核
   main.rs   # Rust v5 引擎二进制入口
+web-wasm/
+  src/lib.rs # 面向浏览器的 wasm-bindgen 封装
+web/
+  src/      # React 界面、规则状态、SVG 棋盘和 Web Worker
+  tests/    # Vitest 单元与组件测试
+  e2e/      # Playwright 浏览器测试
 ```
 
 核心设计原则：
@@ -314,6 +352,7 @@ src/
 - 新算法应通过 `players.py` 注册，保持 `choose_move(board)` 这一统一接口。
 - CLI、TUI 和 GUI 共用 `GameSession` 管理回合、AI 落子、认输、停止、重开和结算。
 - 各界面只负责交互和渲染，不重新实现规则或 AI 对局推进。
+- WebUI 的 TypeScript 状态层负责浏览器对局规则；Rust 搜索通过 Web Worker + WebAssembly 运行，避免阻塞界面主线程。
 
 ## 测试
 
@@ -321,6 +360,16 @@ src/
 
 ```bash
 uv run pytest
+```
+
+运行 WebUI 检查：
+
+```bash
+cd web
+npm run lint
+npm test
+npm run build
+npm run test:e2e
 ```
 
 当前测试覆盖：
@@ -339,6 +388,7 @@ uv run pytest
 - TUI 坐标映射、结算菜单、难度和黑白切换。
 - GUI 坐标映射、按钮命中、结算算法切换和设置动作。
 - 共享 `GameSession` 的落子、非法落子、胜负、认输、重开和 `max_moves` 停止。
+- WebUI 的胜负判断、三种对局模式、悔棋、棋盘坐标映射和响应式真实浏览器交互。
 
 ## 后续可扩展方向
 
@@ -346,5 +396,6 @@ uv run pytest
 - 增加迭代加深和时间限制。
 - 增加可选的单手棋并行搜索，让高深度 alpha-beta 可使用多个 CPU 进程搜索顶层候选点。
 - 增加更多算法实现，并用 `gomoku-eval` 做批量胜率对比。
-- 增加棋谱保存、复盘和悔棋。
+- 增加棋谱导出和复盘。
+- 如需跨设备双人联机，再增加房间服务、状态同步和断线重连；当前“双人对战”是同屏模式。
 - 增加正式连珠禁手规则。
