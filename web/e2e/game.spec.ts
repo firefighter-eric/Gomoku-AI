@@ -1,5 +1,16 @@
 import { expect, test } from "@playwright/test";
 
+test("declares a reachable SVG favicon", async ({ page }) => {
+  await page.goto("/");
+  const faviconHref = await page.locator('link[rel="icon"]').getAttribute("href");
+  expect(faviconHref).toBe("/favicon.svg");
+
+  const response = await page.request.get(new URL(faviconHref!, page.url()).toString());
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await response.text()).toContain('viewBox="0 0 64 64"');
+});
+
 test("human can play and the local AI replies", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("grid", { name: /十五路五子棋棋盘/ })).toBeVisible();
