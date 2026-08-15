@@ -27,6 +27,7 @@ export interface GameState {
   depth: number;
   aiThinking: boolean;
   backend: EngineBackend;
+  soundEnabled: boolean;
   generation: number;
 }
 
@@ -34,6 +35,7 @@ export type GameAction =
   | { type: "play"; row: number; col: number; expectedMoveCount?: number; expectedStone?: Stone }
   | { type: "thinking"; value: boolean }
   | { type: "backend"; value: Exclude<EngineBackend, "loading"> }
+  | { type: "sound-enabled"; value: boolean }
   | { type: "mode"; value: GameMode }
   | { type: "human-stone"; value: Stone }
   | { type: "depth"; value: number }
@@ -51,6 +53,7 @@ export function createGameState(overrides: Partial<GameState> = {}): GameState {
     depth: 5,
     aiThinking: false,
     backend: "loading",
+    soundEnabled: true,
     generation: 0,
     ...overrides,
   };
@@ -64,6 +67,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, aiThinking: action.value };
     case "backend":
       return { ...state, backend: action.value };
+    case "sound-enabled":
+      return { ...state, soundEnabled: action.value };
     case "depth":
       return { ...state, depth: Math.min(10, Math.max(1, action.value)) };
     case "mode":

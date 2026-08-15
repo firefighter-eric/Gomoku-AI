@@ -21,6 +21,22 @@ export function InfoIcon() {
   );
 }
 
+export function SoundIcon({ enabled }: { enabled: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.5 9.25h3.2L12 5.8v12.4l-4.3-3.45H4.5z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
+      {enabled ? (
+        <>
+          <path d="M15 9.1a4 4 0 0 1 0 5.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+          <path d="M17.5 6.8a7.2 7.2 0 0 1 0 10.4" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+        </>
+      ) : (
+        <path d="m15.2 9.2 4.6 5.6m0-5.6-4.6 5.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+      )}
+    </svg>
+  );
+}
+
 export function ChevronIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">

@@ -152,6 +152,7 @@ uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --s
 - GUI 结算界面还需要允许通过下拉框切换算法版本。人机模式切换当前 AI 算法，AI 对 AI 模式分别切换黑白双方算法；`random:v0` 不使用搜索深度，界面上应禁用对应深度调整。
 - WebUI 必须支持人机对战、同一设备双人对战和 AI 对 AI；双人模式下关闭 AI 设置并由黑白双方轮流落子。
 - WebUI 的 AI 搜索必须在 Worker 中运行，不能阻塞主线程。浏览器无法加载 WASM 时允许回退到兼容算法，并在界面中明确显示当前引擎。
+- WebUI 音效通过 Web Audio API 本地合成，必须提供可访问的开关并持久化选择；不要为基础落子音效引入外部音频依赖。
 - WebUI 部署到 Vercel 时 Root Directory 使用 `web`，线上执行 `npm run build:web`；本地 `npm run build` 负责从 Rust 源码重建 WASM 后再构建前端。
 
 ## 文档约定
