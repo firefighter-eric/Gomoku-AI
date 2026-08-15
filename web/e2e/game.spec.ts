@@ -25,6 +25,33 @@ test("mobile layout remains inside the viewport", async ({ page }, testInfo) => 
   await expect(page.locator(".engine-note")).toContainText("所有计算均在浏览器本地完成");
 });
 
+test("desktop labels remain fully visible at a compact window size", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "desktop-only assertion");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+
+  expect(await page.title()).toBe("Gomoku-AI · 五子棋");
+  await expect(page.getByText("浏览器版")).toHaveCount(0);
+
+  const layout = await page.evaluate(() => {
+    const controls = document.querySelector<HTMLElement>(".controls");
+    const labels = Array.from(document.querySelectorAll<HTMLElement>(".control-label"));
+    if (!controls) {
+      throw new Error("controls panel is missing");
+    }
+    const controlsBox = controls.getBoundingClientRect();
+    return {
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      labelsInsidePanel: labels.every((label) => label.getBoundingClientRect().left >= controlsBox.left - 1),
+      controlsOverflow: getComputedStyle(controls).overflow,
+    };
+  });
+
+  expect(layout.pageOverflow).toBeLessThanOrEqual(1);
+  expect(layout.labelsInsidePanel).toBe(true);
+  expect(layout.controlsOverflow).toBe("visible");
+});
+
 test("two local players can alternate turns", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "双人对战" }).click();

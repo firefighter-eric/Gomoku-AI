@@ -29,6 +29,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 89% 30%, rgba(120, 108, 86, 0.055), transparent 25rem),
     linear-gradient(105deg, rgba(255, 255, 255, 0.18), transparent 32%),
@@ -241,7 +242,7 @@ button {
   position: absolute;
   z-index: -1;
   top: 18px;
-  right: -70px;
+  right: 32px;
   width: 230px;
   height: 470px;
   border: 1px solid rgba(95, 87, 74, 0.07);
@@ -774,12 +775,6 @@ button {
 
   .controls::before {
     display: block;
-  }
-
-  .controls {
-    max-height: calc(100vh - 128px);
-    overflow: auto;
-    scrollbar-width: thin;
   }
 
   .move-history > ol {
