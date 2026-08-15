@@ -4,7 +4,7 @@
 
 ## 项目目标
 
-`Gomoku-AI` 是一个 Python 3.12 + uv 的五子棋项目，当前目标是提供稳定的核心棋盘规则、可玩的普通 CLI、人机 TUI、Pygame GUI、AI 对 AI 模式，以及后续继续扩展界面的清晰接口。
+`Gomoku-AI` 是一个 Python 3.12 + uv 的五子棋项目，当前目标是提供稳定的核心棋盘规则、可玩的普通 CLI、人机 TUI、Pygame GUI、浏览器 WebUI、AI 对 AI 模式，以及后续继续扩展界面的清晰接口。
 
 算法实现参考 `firefighter-eric/TicTacToe-AI` 的设计思路：
 
@@ -25,6 +25,8 @@
 - Rust/Cargo 用于构建 `alpha-beta:v5` 搜索引擎
 - 标准库 `curses` 用于 TUI
 - Pygame 用于 GUI
+- React + TypeScript + Vite 用于 WebUI
+- Web Worker + WebAssembly 用于在浏览器中运行 Rust `alpha-beta:v5`
 
 除非确实需要，不要给核心游戏逻辑引入额外运行时依赖。
 
@@ -64,6 +66,14 @@ GUI 人机对战：
 
 ```bash
 uv run gomoku --mode human-ai --human black --depth 5 --ui gui
+```
+
+WebUI：
+
+```bash
+cd web
+npm install
+npm run dev
 ```
 
 AI 对 AI：
@@ -118,6 +128,9 @@ uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --s
 - `gomoku_ai/cli.py`：普通文本命令行入口和文本输入输出，不重新实现对局规则。
 - `gomoku_ai/tui.py`：`curses` 终端界面、方向键/鼠标交互、结算菜单。
 - `gomoku_ai/gui.py`：Pygame 图形界面、棋盘绘制、鼠标点击和 GUI 结算操作。
+- `web/src/`：React WebUI、TypeScript 对局状态、SVG 棋盘和 Web Worker，不依赖 Python 服务端。
+- `web-wasm/src/lib.rs`：浏览器 WASM 的薄封装，搜索规则继续复用根目录 Rust 内核。
+- `web/src/wasm/pkg/`：由 `wasm-pack` 生成并提交的生产 WASM 包，供 Vercel 无 Rust 构建使用；修改 Rust 搜索后必须重新生成并验证差异。
 - `docs/algorithm-versions.md`：不同算法版本的详细说明、对比命令和新增版本约定。
 - `docs/evaluation-results.md`：算法对局评测结果记录。正式强弱记录以 `v1` 为基线，每组 8 场。
 - `tests/`：每个模块对应测试文件，新增行为必须补测试。
@@ -137,6 +150,9 @@ uv run gomoku-eval --first alpha-beta --first-version v5 --second alpha-beta --s
 - TUI 和 GUI 结束后必须停留在结算界面，允许用户调整难度、切换黑白、重新开始或退出；不要恢复成“按任意键退出”或自动关闭的行为。
 - GUI 运行面板和结算界面需要允许在人机模式与 AI 对 AI 模式之间切换。运行中切换模式会直接按新模式重开，结算界面切换模式后通过 `Restart` 生效。
 - GUI 结算界面还需要允许通过下拉框切换算法版本。人机模式切换当前 AI 算法，AI 对 AI 模式分别切换黑白双方算法；`random:v0` 不使用搜索深度，界面上应禁用对应深度调整。
+- WebUI 必须支持人机对战、同一设备双人对战和 AI 对 AI；双人模式下关闭 AI 设置并由黑白双方轮流落子。
+- WebUI 的 AI 搜索必须在 Worker 中运行，不能阻塞主线程。浏览器无法加载 WASM 时允许回退到兼容算法，并在界面中明确显示当前引擎。
+- WebUI 部署到 Vercel 时 Root Directory 使用 `web`，线上执行 `npm run build:web`；本地 `npm run build` 负责从 Rust 源码重建 WASM 后再构建前端。
 
 ## 文档约定
 
@@ -166,6 +182,12 @@ uv run pytest
 - GUI 坐标映射、按钮命中和结算设置动作有单元测试覆盖。
 - GUI 对局结束后不会自动退出，仍停留在结算界面。
 
+涉及 WebUI 时，还需要确认：
+
+- 在 `web/` 中运行 `npm run lint`、`npm test` 和 `npm run build`。
+- 运行 `npm run test:e2e`，覆盖人机落子及 WASM 引擎、同屏双人模式和移动端无横向溢出。
+- 部署后不能只检查 HTTP 状态；还要检查生产域名的渲染 DOM、桌面和移动端布局、关键交互与控制台错误。
+
 涉及算法抽象或评测时，还需要确认：
 
 - `uv run gomoku-eval --first alpha-beta --first-version v2 --second alpha-beta --second-version v1 --first-depth 1 --second-depth 1 --games 2 --size 5 --max-moves 2` 能输出对比结果。
@@ -183,6 +205,7 @@ uv run pytest
 - 保持 AI 参数可控，默认不要让一手棋等待过久。
 - AI 性能很依赖候选点排序与候选宽度。不要把 `_move_order_score` 改回全盘评分，也不要在必胜判断中复制棋盘；高深度搜索应保留深层候选收窄策略。
 - v5 Rust 引擎构建产物在 `target/` 下，不要提交；如果未构建 Rust 引擎，`AlphaBetaV5AI` 会回退到 `AlphaBetaV4AI`。
+- 不提交 `target/` 或普通构建缓存；`web/src/wasm/pkg/` 是 Vercel 运行所需的生产源码资产，是唯一需要提交的生成产物。
 - 优先补行为级测试，而不是只测试实现细节。
 - 不要提交 `.venv/`、缓存、构建产物或系统临时文件。
 - 如果新增依赖，说明为什么必须新增，并更新 `pyproject.toml` 与 README。

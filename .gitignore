@@ -3,7 +3,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.cache/
 dist/
 build/
 *.egg-info/
 target/
+node_modules/
+.vercel/
+.env*.local
+playwright-report/
+test-results/
