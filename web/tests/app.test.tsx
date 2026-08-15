@@ -11,6 +11,8 @@ describe("WebUI", () => {
   it("renders the playable board and settings", () => {
     render(<App />);
     expect(screen.getByRole("link", { name: "Gomoku-AI 首页" })).toBeInTheDocument();
+    expect(screen.getByText("五子棋", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(/浏览器版/)).not.toBeInTheDocument();
     expect(screen.getByRole("grid", { name: /十五路五子棋棋盘/ })).toBeInTheDocument();
     expect(screen.getAllByText("你的回合").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "人机对战" })).toHaveAttribute("aria-pressed", "true");

@@ -170,7 +170,7 @@ export default function App() {
         <a className="brand" href="/" aria-label="Gomoku-AI 首页">
           <BrandMark />
           <span className="brand__name">Gomoku-AI</span>
-          <span className="brand__descriptor">五子棋 · 浏览器版</span>
+          <span className="brand__descriptor">五子棋</span>
         </a>
         <InfoDialog />
       </header>
